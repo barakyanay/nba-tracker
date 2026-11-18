@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+*.tsbuildinfo
 .venv/
 venv/
 .env

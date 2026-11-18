@@ -15,6 +15,23 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import {
+  FALLBACK_LEAGUE,
+  FALLBACK_LIVE,
+  FALLBACK_PLAYER,
+  FALLBACK_TEAM,
+  loadLeagueData,
+  loadLiveData,
+  loadPlayerData,
+  loadTeamData,
+  type ApiResult,
+  type LeaguePayload,
+  type LivePayload,
+  type PlayerPayload,
+  type Row,
+  type ScoreGame,
+  type TeamPayload,
+} from './data'
+import {
   CartesianGrid,
   Line,
   LineChart,
@@ -25,105 +42,34 @@ import {
 } from 'recharts'
 
 type View = 'spotlight' | 'team' | 'league'
-type Row = Record<string, unknown>
 
-type GameRow = Row & {
-  GAME_DATE?: string
-  MATCHUP?: string
-  WL?: string
-  MIN?: string | number
-  PTS?: number
-  REB?: number
-  OREB?: number
-  DREB?: number
-  AST?: number
-  STL?: number
-  BLK?: number
-  FGM?: number
-  FGA?: number
-  FG3M?: number
-  FG3A?: number
-  FTM?: number
-  FTA?: number
-  TOV?: number
-  PF?: number
-  PLUS_MINUS?: number
-}
-
-type PlayerPayload = {
-  player: { name: string; team: string }
-  season: string
-  averages: Row
-  games: GameRow[]
-  trend: Row[]
-}
-
-type LivePayload = {
-  isLive: boolean
-  game: ScoreGame | null
-  stats: GameRow | null
-  message: string | null
-}
-
-type ScoreGame = {
-  id: string
-  status: string
-  statusCode: number
-  home: { id: string; name: string; abbreviation: string; score: number | null }
-  away: { id: string; name: string; abbreviation: string; score: number | null }
-}
-
-type TeamPayload = {
-  season: string
-  record: {
-    wins?: number
-    losses?: number
-    conference?: string
-    rank?: number
-    streak?: string | number
-    streakType?: string
-  }
-  roster: Row[]
-  recent: GameRow[]
-  upcoming: Row[]
-}
-
-type LeaguePayload = {
-  date: string
-  games: ScoreGame[]
-  standings: Row[]
-}
-
-const API_URL = import.meta.env.VITE_API_URL ?? ''
 const YEAR = new Date().getFullYear()
 const SEASON_START = new Date().getMonth() >= 9 ? YEAR : YEAR - 1
 const NBA_SEASON = `${SEASON_START}—${String(SEASON_START + 1).slice(-2)}`
 
-function useApi<T>(path: string) {
+function useApi<T>(loader: () => Promise<ApiResult<T>>, fallback: T, enabled: boolean) {
   const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const reload = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}${path}`)
-      const body = await response.json()
-      if (!response.ok) {
-        throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`)
-      }
-      setData(body as T)
+      const result = await loader()
+      setData(result.data)
+      setError(result.error)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load NBA data.')
+      setData(fallback)
     } finally {
       setLoading(false)
     }
-  }, [path])
+  }, [fallback, loader])
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    if (enabled && data === null) void reload()
+  }, [data, enabled, reload])
 
   return { data, loading, error, reload }
 }
@@ -159,10 +105,13 @@ function dateLabel(value: unknown, options?: Intl.DateTimeFormatOptions): string
   const text = String(value)
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
   const date = dateOnly
-    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    ? new Date(Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 12))
     : new Date(text)
   if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('en-US', options ?? { month: 'short', day: 'numeric' }).format(date)
+  return new Intl.DateTimeFormat('en-US', {
+    ...(options ?? { month: 'short', day: 'numeric' }),
+    timeZone: dateOnly ? 'UTC' : 'America/Los_Angeles',
+  }).format(date)
 }
 
 function StatCard({ label, value, suffix, icon: Icon, accent = false }: {
@@ -195,7 +144,7 @@ function LoadError({ loading, error, onRetry }: { loading: boolean; error: strin
     <div className="empty-state">
       <CircleHelp size={19} />
       <div>
-        <strong>{loading ? 'Connecting to NBA.com' : 'Live data unavailable'}</strong>
+        <strong>{loading ? 'Connecting to ESPN' : 'Some data unavailable'}</strong>
         <p>{loading ? 'Fetching the latest stats. This can take a few seconds.' : error}</p>
         {!loading && <button className="text-button" onClick={onRetry}>Try again <RefreshCw size={13} /></button>}
       </div>
@@ -305,9 +254,9 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
             </div>
           </div>
         ) : (
-          <div className="offday"><div className="offday-icon"><CalendarDays size={18} /></div><div><strong>{live?.game ? 'Tip-off is coming' : 'No game on the schedule today'}</strong><p>{live?.message ?? 'Deni’s live box score will appear here when Portland takes the court.'}</p></div><span className="offday-date">{dateLabel(new Date(), { weekday: 'short', month: 'short', day: 'numeric' })}</span></div>
+          <div className="offday"><div className="offday-icon"><CalendarDays size={18} /></div><div><strong>{live?.game?.statusCode === 3 ? 'Portland’s game is final' : live?.game ? 'Tip-off is coming' : 'No game on the schedule today'}</strong><p>{live?.message ?? 'Deni’s live box score will appear here when Portland takes the court.'}</p></div><span className="offday-date">{dateLabel(new Date(), { weekday: 'short', month: 'short', day: 'numeric' })}</span></div>
         )}
-        <div className="live-foot"><span><span className="stat-dot" /> DATA FROM NBA.COM</span><span>REFRESHES EVERY 30 SEC</span></div>
+        <div className="live-foot">        <span><span className="stat-dot" /> DATA FROM ESPN</span><span>REFRESHES EVERY 30 SEC</span></div>
       </section>
 
       <div className="content-grid charts-grid">
@@ -330,7 +279,7 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
                 </>}
               </LineChart>
             </ResponsiveContainer>
-          </div> : playerError ? null : <div className="chart-empty">{playerLoading ? 'Loading the season game log…' : 'Season trend will appear when games are available.'}</div>}
+          </div> : <div className="chart-empty">{playerLoading ? 'Loading the season game log…' : playerError ? 'Season trend is unavailable while ESPN data is offline.' : 'Season trend will appear when games are available.'}</div>}
           <div className="chart-legend"><span><i className="legend-red" />{chartMode === 'scoring' ? 'POINTS' : 'FG%'}</span><span><i className="legend-gold" />{chartMode === 'scoring' ? 'REBOUNDS' : '3P%'}</span>{chartMode === 'scoring' && <span><i className="legend-blue" />ASSISTS</span>}</div>
         </section>
         <section className="surface efficiency-card">
@@ -377,7 +326,7 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
           })}</div> : <div className="quiet-empty">{loading ? 'Loading schedule…' : 'Upcoming games will appear here when the season schedule is available.'}</div>}
         </section>
         <section className="surface schedule-card recent-card"><div className="section-title"><div><p className="eyebrow">Last five</p><h2>Recent results</h2></div><Activity size={17} className="title-icon" /></div>
-          {data?.recent.length ? <div className="schedule-list">                    {data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b>{dateLabel(game.GAME_DATE, { month: 'short', day: 'numeric' })}</b><span>{dateLabel(game.GAME_DATE, { weekday: 'short' })}</span></div><div className="schedule-opponent"><div className={`team-mark ${game.WL === 'W' ? 'team-mark-red' : ''}`}>{(game.MATCHUP ?? 'NBA').split(' ').pop()?.replace(/[^A-Z]/g, '').slice(0, 3)}</div><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'} PTS</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
+          {data?.recent.length ?           <div className="schedule-list">{data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b>{dateLabel(game.GAME_DATE, { month: 'short', day: 'numeric' })}</b><span>{dateLabel(game.GAME_DATE, { weekday: 'short' })}</span></div><div className="schedule-opponent"><div className={`team-mark ${game.WL === 'W' ? 'team-mark-red' : ''}`}>{(game.MATCHUP ?? 'NBA').split(' ').pop()?.replace(/[^A-Z]/g, '').slice(0, 3)}</div><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'}–{game.OPPONENT_PTS ?? '—'}</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
         </section>
       </div>
       <section className="surface table-section roster-section"><SectionTitle kicker="Built for the grind" title="The roster" action={<span className="muted-label">{data?.roster.length ?? '—'} PLAYERS <Users size={14} /></span>} />
@@ -407,7 +356,7 @@ function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | nul
       {error && <LoadError loading={loading} error={error} onRetry={reload} />}
       <SectionTitle kicker="Around the association" title="Today’s scoreboard" action={<button className="text-button" onClick={() => void reload()}><RefreshCw size={13} /> Refresh</button>} />
       {loading && !data && <div className="loading-line" />}
-      {data && <div className="scoreboard-grid">{data.games.map((game) => <ScoreGameCard key={game.id} game={game} />)}{!data.games.length && <div className="quiet-empty full-width">No NBA games scheduled today. Check back on game day.</div>}</div>}
+      {data && <div className="scoreboard-grid">{data.games.map((game) => <ScoreGameCard key={game.id} game={game} />)}{!data.games.length && <div className="quiet-empty full-width">{error ? 'Today’s scoreboard is temporarily unavailable.' : 'No NBA games scheduled today. Check back on game day.'}</div>}</div>}
       <section className="surface standings-section"><div className="section-title"><div><p className="eyebrow">The race to the playoffs</p><h2>Conference standings</h2></div><div className="segmented"><button className={conference === 'West' ? 'selected' : ''} onClick={() => setConference('West')}>Western</button><button className={conference === 'East' ? 'selected' : ''} onClick={() => setConference('East')}>Eastern</button></div></div>
         {data && <StandingsTable rows={conference === 'West' ? west : east} conference={conference} />}
         {!data && !error && <div className="quiet-empty">Conference standings load with today’s scoreboard.</div>}
@@ -418,10 +367,10 @@ function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | nul
 
 export default function App() {
   const [view, setView] = useState<View>('spotlight')
-  const player = useApi<PlayerPayload>('/api/player')
-  const live = useApi<LivePayload>('/api/player/live')
-  const team = useApi<TeamPayload>('/api/team')
-  const league = useApi<LeaguePayload>('/api/league')
+  const player = useApi(loadPlayerData, FALLBACK_PLAYER, view === 'spotlight')
+  const live = useApi(loadLiveData, FALLBACK_LIVE, view === 'spotlight')
+  const team = useApi(loadTeamData, FALLBACK_TEAM, view === 'team')
+  const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'league')
   const nav: { id: View; label: string }[] = [
     { id: 'spotlight', label: 'Deni spotlight' },
     { id: 'team', label: 'Trail Blazers' },
@@ -434,13 +383,13 @@ export default function App() {
       <header className="site-header">
         <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a>
         <nav className="main-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
-        <div className="header-status"><span className="live-dot" /> NBA.COM DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div>
+        <div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div>
       </header>
       <main className="main-content">
         {view === 'spotlight' && <Spotlight player={player.data} live={live.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} />}
         {view === 'team' && <TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} />}
         {view === 'league' && <LeagueHub data={league.data} loading={league.loading} error={league.error} reload={league.reload} />}
-        <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM NBA.COM STATS</span></footer>
+        <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM ESPN</span></footer>
       </main>
       <div className="mobile-nav">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</div>
     </div>

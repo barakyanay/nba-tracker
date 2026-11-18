@@ -1,28 +1,15 @@
 # Rip City Tracker
 
-A dark, Portland Trail Blazers-focused NBA dashboard for Deni Avdija’s season and game stats, Portland’s schedule and roster, and the league scoreboard. The FastAPI backend reads NBA.com Stats through `nba_api` and caches responses in memory.
+A dark, Portland Trail Blazers-focused NBA dashboard for Deni Avdija’s season and game stats, Portland’s schedule and roster, and the league scoreboard. The frontend is a static React/Vite app that requests public ESPN JSON endpoints directly from the browser; it does not require the Python backend.
 
 ## Requirements
 
-- Python 3.10+
 - Node.js 20.19+ or 22.12+
 - npm
 
-NBA.com Stats is an unofficial upstream data source. It may throttle or temporarily block requests; the API returns explicit `503` errors when live data cannot be retrieved.
+ESPN’s public endpoints may throttle requests or be temporarily unavailable. The app shows explicit fallback states when live data cannot be loaded.
 
 ## Run locally
-
-In one terminal:
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-In another terminal:
 
 ```powershell
 cd frontend
@@ -30,16 +17,10 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The frontend proxies `/api` requests to FastAPI on port `8000`. Interactive API docs are available at `http://localhost:8000/docs`.
+Open the Vite URL printed in the terminal (normally `http://localhost:5173`). No backend server or API key is needed.
 
-To use a different backend address, set `VITE_API_URL` in `frontend/.env.local`.
+## Deploy to GitHub Pages
 
-## API
+The workflow in `.github/workflows/deploy.yml` builds the frontend and publishes `frontend/dist` whenever changes are pushed to `main`. In the repository’s **Settings → Pages**, select **GitHub Actions** as the deployment source.
 
-- `GET /api/health` — service health
-- `GET /api/player` — Deni Avdija season averages, last 10 games, and chart series
-- `GET /api/player/live` — live game state and box score, or an explicit pre-game/off-day state
-- `GET /api/team` — Portland record, standings, roster, recent results, and upcoming games
-- `GET /api/league` — today’s scoreboard and conference standings
-
-Live scoreboard and player stats are cached for 30 seconds; season, roster, schedule, and standings data are cached for 15 minutes. Caches are process-local and reset when the backend restarts.
+Vite uses a relative asset base so the built site works under a repository subpath. Season statistics use ESPN’s public season-statistics endpoint; scoreboards, schedules, and game box scores use ESPN’s public site API. Successful browser responses are cached in memory to reduce repeat requests.
