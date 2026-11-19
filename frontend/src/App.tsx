@@ -8,11 +8,13 @@ import {
   Clock3,
   Flame,
   Info,
+  Menu,
   Radio,
   RefreshCw,
   Shield,
   Trophy,
   Users,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -38,6 +40,7 @@ import {
 } from './data'
 import { DeniShareCard, GameHighlightLink, HighlightsHub } from './MediaHub'
 import { HistoryFeed, LeagueLeadersHub, WeeklyDigestModal, weeklyDigestKey, weeklyStandingsKey } from './InsightsHub'
+import MatchCenter from './MatchCenter'
 import {
   Area,
   Bar,
@@ -54,7 +57,7 @@ import {
   YAxis,
 } from 'recharts'
 
-type View = 'command' | 'deepdive' | 'leaders' | 'history'
+type View = 'command' | 'games' | 'standings' | 'trends' | 'deepdive'
 
 const YEAR = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()))
 const MONTH = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', month: 'numeric' }).format(new Date()))
@@ -235,6 +238,43 @@ function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onT
       <div className="ticker-refresh-note">{autoRefresh ? `AUTO ${live?.isLive ? '60S' : '5M'}` : 'AUTO OFF'}</div>
     </aside>
   )
+}
+
+function DeniQuickTrack({ player, live, team, onView }: {
+  player: PlayerPayload | null
+  live: LivePayload | null
+  team: TeamPayload | null
+  onView: (view: View) => void
+}) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const game = player ? latestPlayerGame(player.games) : undefined
+  const stats = live?.isLive ? live.stats : game
+  const next = team?.upcoming[0]
+  const milestone = stats && Number(stats.PTS) >= 20 && Number(stats.REB) >= 10
+    ? 'DOUBLE-DOUBLE WATCH'
+    : stats && Number(stats.PTS) >= 30
+      ? '30+ POINT NIGHT'
+      : game?.WL
+        ? `LAST GAME · ${game.WL}`
+        : 'DENI WATCH'
+  return <aside className={`quick-track ${mobileOpen ? 'quick-track-open' : ''}`}>
+    <button className="quick-track-mobile-toggle" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen}>
+      <span><i className={live?.isLive ? 'live-dot' : ''} /> DENI QUICK-TRACK</span>{mobileOpen ? <X size={17} /> : <Menu size={17} />}
+    </button>
+    <div className="quick-track-inner">
+      <div className="quick-track-heading"><p className="eyebrow"><span className={live?.isLive ? 'live-dot' : 'track-dot'} /> {live?.isLive ? 'LIVE PLAYER TRACKER' : 'DENI AVDIJA · #8'}</p><h2>Quick-track</h2></div>
+      <article className={`quick-track-card ${live?.isLive ? 'quick-track-live' : ''}`}>
+        <div className="quick-track-player"><span className="quick-track-number">08</span><div><b>Deni Avdija</b><small>PORTLAND TRAIL BLAZERS</small></div></div>
+        <span className="quick-track-state">{live?.isLive ? 'LIVE NOW' : milestone}</span>
+        <div className="quick-track-stats">{[['PTS', stats?.PTS], ['REB', stats?.REB], ['AST', stats?.AST], ['STL', stats?.STL], ['BLK', stats?.BLK], ['MIN', stats?.MIN], ['FG%', stats?.FG_PCT], ['3P%', stats?.FG3_PCT], ['+/-', stats?.PLUS_MINUS]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{label === 'FG%' || label === '3P%' ? value === undefined ? '—' : `${(Number(value) * 100).toFixed(0)}%` : number(value, 0)}</b></div>)}</div>
+        <div className="quick-track-result">{live?.isLive && live.game ? <><Radio size={13} /><b>{live.game.away.abbreviation} {live.game.away.score ?? 0} — {live.game.home.score ?? 0} {live.game.home.abbreviation}</b><span>{live.game.status}</span></> : game ? <><Trophy size={13} /><b>{String(game.MATCHUP ?? 'Last game')}</b><span>{number(game.TEAM_SCORE, 0)}–{number(game.OPPONENT_SCORE, 0)} · {game.WL ?? 'FINAL'}</span></> : <span>Last completed game loads with player statistics.</span>}</div>
+        <button className="quick-track-boxscore" onClick={() => { onView('deepdive'); setMobileOpen(false) }}>VIEW FULL PLAYER BOX SCORE <ChevronRight size={14} /></button>
+      </article>
+      <article className="quick-track-alert"><p className="eyebrow">NEXT PORTLAND TIP · ISRAEL TIME</p>{live?.isLive ? <strong><i className="live-dot" /> Portland is on the floor</strong> : next?.TIP_TIMESTAMP ? <><strong>{String(next.OPPONENT_NAME ?? 'Trail Blazers')}</strong><span>{new Intl.DateTimeFormat('en-IL', { timeZone: 'Asia/Jerusalem', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(String(next.TIP_TIMESTAMP)))} IST</span><Countdown target={String(next.TIP_TIMESTAMP)} /></> : <span>Schedule updates when ESPN publishes the next game.</span>}</article>
+      <div className="quick-track-actions"><button onClick={() => { onView('deepdive'); setMobileOpen(false) }}><Activity size={15} /> Deni deep-dive</button>{player && <DeniShareCard player={player} />}<button onClick={() => { onView('deepdive'); setMobileOpen(false); window.setTimeout(() => document.getElementById('highlights-hub')?.scrollIntoView({ behavior: 'smooth' }), 100) }}><Radio size={15} /> Latest highlights</button></div>
+      <div className="quick-track-foot"><span><span className="live-dot" /> ESPN PUBLIC DATA</span><span>100% CLIENT-SIDE</span></div>
+    </div>
+  </aside>
 }
 
 function statNumber(value: unknown): number {
@@ -474,18 +514,6 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
   )
 }
 
-function StandingsTable({ rows, conference }: { rows: Row[]; conference: string }) {
-  const filtered = rows.filter((team) => String(team.Conference ?? '').toLowerCase().includes(conference.toLowerCase()))
-  return <div className="table-scroll standings-scroll"><table><thead><tr><th>#</th><th>TEAM</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>STREAK</th></tr></thead><tbody>
-    {filtered.map((team, index) => {
-      const seed = Number(team.PlayoffRank ?? index + 1)
-      const zone = seed <= 6 ? 'playoff-zone' : seed <= 10 ? 'playin-zone' : ''
-      return <tr className={`${zone} ${String(team.TeamID) === '22' ? 'highlight-row' : ''}`} key={String(team.TeamID ?? index)}><td><span className={`seed-chip ${zone}`}>{seed}</span></td><td className="standings-name">{team.TeamCity ? `${String(team.TeamCity)} ${String(team.TeamName ?? '')}` : String(team.TeamName ?? team.Team ?? '—')}{String(team.TeamID) === '22' && <span className="you-tag">POR</span>}</td><td>{String(team.WINS ?? '—')}</td><td>{String(team.LOSSES ?? '—')}</td><td>{pct(team.WinPCT)}</td><td>{String(team.ConferenceGamesBack ?? '—')}</td><td>{String(team.strCurrentStreak ?? team.CurrentStreak ?? '—')}</td></tr>
-    })}
-    {!filtered.length && <tr><td colSpan={7} className="empty-cell">Standings are not available.</td></tr>}
-  </tbody></table></div>
-}
-
 function logistic(value: number): number {
   return 1 / (1 + Math.exp(-value))
 }
@@ -586,43 +614,22 @@ function CommandCenter({ player, live, team, league, insights }: {
   )
 }
 
-function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | null; loading: boolean; error: string; reload: () => void }) {
-  const [conference, setConference] = useState<'East' | 'West'>('West')
-  const east = data?.standings.filter((row) => String(row.Conference ?? '').toLowerCase().includes('east')) ?? []
-  const west = data?.standings.filter((row) => String(row.Conference ?? '').toLowerCase().includes('west')) ?? []
-  return (
-    <>
-      <section className="league-hero"><div><div className="hero-kicker"><span className="live-dot" /> AROUND THE LEAGUE</div><h1>Every game.<br /><span>Every night.</span></h1><p>League-wide action, one place.</p></div><div className="league-date"><CalendarDays size={17} /><span>TONIGHT’S SLATE</span><strong>{dateLabel(data?.date ?? new Date().toISOString(), { weekday: 'long', month: 'long', day: 'numeric' })}</strong></div></section>
-      {error && <LoadError loading={loading} error={error} onRetry={reload} />}
-      <SectionTitle kicker="Around the association" title="Today’s scoreboard" action={<button className="text-button" onClick={() => void reload()}><RefreshCw size={13} /> Refresh</button>} />
-      {loading && !data && <div className="loading-line" />}
-      {data && <div className="scoreboard-grid">{data.games.map((game) => <ScoreGameCard key={game.id} game={game} />)}{!data.games.length && <div className="quiet-empty full-width">{error ? 'Today’s scoreboard is temporarily unavailable.' : 'No NBA games scheduled today. Check back on game day.'}</div>}</div>}
-      <section className="surface standings-section"><div className="section-title"><div><p className="eyebrow">The race to the playoffs</p><h2>Conference standings</h2></div><div className="segmented"><button className={conference === 'West' ? 'selected' : ''} onClick={() => setConference('West')}>Western</button><button className={conference === 'East' ? 'selected' : ''} onClick={() => setConference('East')}>Eastern</button></div></div>
-        {data?.sample && <p className="insights-note"><Info size={14} /> Sample conference order · win-loss records will appear when ESPN’s standings feed responds.</p>}
-        {data && <StandingsTable rows={conference === 'West' ? west : east} conference={conference} />}
-        {!data && !error && <div className="quiet-empty">Conference standings load with today’s scoreboard.</div>}
-      </section>
-      <PlayoffSimulator rows={data?.standings ?? []} />
-    </>
-  )
-}
-
 export default function App() {
   const [view, setView] = useState<View>('command')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastSync, setLastSync] = useState<Date | null>(null)
   const [digestOpen, setDigestOpen] = useState(false)
   const [digestUnread, setDigestUnread] = useState(false)
-  const player = useApi(loadPlayerData, FALLBACK_PLAYER, view === 'command' || view === 'deepdive' || view === 'history')
+  const player = useApi(loadPlayerData, FALLBACK_PLAYER, true)
   const live = useApi(loadLiveData, FALLBACK_LIVE, true)
   const team = useApi(loadTeamData, FALLBACK_TEAM, true)
-  const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'command' || view === 'leaders')
+  const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'command' || view === 'games' || view === 'standings' || view === 'trends')
   const insights = useApi(loadInsights, FALLBACK_INSIGHTS, true)
   const refreshAll = useCallback(async () => {
     const active = [live.reload(), team.reload()]
-    if (player.data || view === 'command' || view === 'deepdive' || view === 'history') active.push(player.reload())
-    if (league.data || view === 'command' || view === 'leaders') active.push(league.reload())
-    if (insights.data || view === 'command' || view === 'leaders' || view === 'history') active.push(insights.reload())
+    active.push(player.reload())
+    if (league.data || view === 'command' || view === 'games' || view === 'standings' || view === 'trends') active.push(league.reload())
+    if (insights.data || view === 'command' || view === 'trends' || view === 'deepdive') active.push(insights.reload())
     await Promise.allSettled(active)
     setLastSync(new Date())
   }, [insights.data, insights.reload, league.data, league.reload, live.reload, player.data, player.reload, team.reload, view])
@@ -667,20 +674,23 @@ export default function App() {
     }
   }
   const nav: { id: View; label: string }[] = [
-    { id: 'command', label: 'Command Center' },
+    { id: 'games', label: 'Games & Match Center' },
+    { id: 'standings', label: 'Standings & Playoffs' },
+    { id: 'trends', label: 'Trends & Player Lab' },
     { id: 'deepdive', label: 'Deni & Blazers' },
-    { id: 'leaders', label: 'League Leaders' },
-    { id: 'history', label: 'Anomalies & Media' },
   ]
+  const isBlazersMode = view === 'command' || view === 'deepdive'
+  const setMode = (mode: 'blazers' | 'league') => setView(mode === 'blazers' ? 'command' : 'games')
 
   return (
     <div className="app-shell">
       <div className="topline"><span>{NBA_SEASON} NBA SEASON</span><span>THE ROSE CITY’S HOME FOR HOOPS <i /> <b>PORTLAND, OR</b></span></div>
       <header className="site-header">
         <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setView('command') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a>
-        <nav className="main-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
+        <div className="mode-switcher" role="group" aria-label="Analytics mode"><button className={isBlazersMode ? 'mode-selected' : ''} onClick={() => setMode('blazers')}>Deni &amp; Blazers Hub</button><button className={!isBlazersMode ? 'mode-selected' : ''} onClick={() => setMode('league')}>NBA League Analytics Lab</button></div>
         <div className="header-actions"><button className="digest-trigger" onClick={openDigest}>WEEKLY DIGEST{digestUnread && <i aria-label="Unread digest" />}</button><div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div></div>
       </header>
+      <nav className="workspace-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id || view === 'command' && item.id === 'deepdive' ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
       <LiveTicker
         live={live.data}
         team={team.data}
@@ -691,10 +701,16 @@ export default function App() {
         onToggleAutoRefresh={() => setAutoRefresh((enabled) => !enabled)}
       />
       <main className="main-content">
-        {view === 'command' && <CommandCenter player={player.data} live={live.data} team={team.data} league={league.data} insights={insights.data} />}
-        {view === 'deepdive' && <><Spotlight player={player.data} live={live.data} team={team.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} /><TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} /></>}
-        {view === 'leaders' && <><LeagueLeadersHub insights={insights.data} player={player.data} error={insights.error} /><LeagueHub data={league.data} loading={league.loading} error={league.error} reload={league.reload} /></>}
-        {view === 'history' && <><HistoryFeed insights={insights.data} player={player.data} error={insights.error} /><HighlightsHub latestGame={player.data ? latestPlayerGame(player.data.games) : undefined} /></>}
+        <div className="workspace-layout">
+          <DeniQuickTrack player={player.data} live={live.data} team={team.data} onView={setView} />
+          <div className="workspace-main">
+            {view === 'command' && <CommandCenter player={player.data} live={live.data} team={team.data} league={league.data} insights={insights.data} />}
+            {(view === 'games' || view === 'standings' || view === 'trends') && <MatchCenter view={view} league={league.data} loading={league.loading} error={league.error} reload={league.reload} />}
+            {view === 'standings' && <PlayoffSimulator rows={league.data?.standings ?? []} />}
+            {view === 'trends' && <><LeagueLeadersHub insights={insights.data} player={player.data} error={insights.error} /><TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} /></>}
+            {view === 'deepdive' && <div id="deni-deep-dive"><Spotlight player={player.data} live={live.data} team={team.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} /><TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} /><HistoryFeed insights={insights.data} player={player.data} error={insights.error} /><div id="highlights-hub"><HighlightsHub latestGame={player.data ? latestPlayerGame(player.data.games) : undefined} /></div></div>}
+          </div>
+        </div>
         <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('command') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM ESPN</span></footer>
       </main>
       <div className="mobile-nav">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</div>

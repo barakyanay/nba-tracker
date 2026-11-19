@@ -1,13 +1,15 @@
 # Rip City Tracker
 
-A dark, Portland Trail Blazers-focused NBA dashboard for Deni Avdija’s season and game stats, Portland’s schedule and roster, and the league scoreboard. The frontend is a static React/Vite app that requests public ESPN JSON endpoints directly from the browser; it does not require the Python backend.
+A client-side NBA analytics dashboard focused on Deni Avdija, the Portland Trail Blazers, and league-wide game coverage. Its match center supports Israel-time date navigation, live and final scorecards, full game summaries, sortable box scores, team comparisons, play-by-play, and injury reports. Standings include a combined league power view, playoff zones, a Portland what-if simulator, and a 30-team scoring/defense chart. A persistent Deni quick-track dock, game trends, highlights, sharing tools, leaders, and history feed round out the workspace.
+
+The frontend is a static React/Vite app that requests public ESPN JSON endpoints directly from the browser; it does not require the Python backend.
 
 ## Requirements
 
 - Node.js 20.19+ or 22.12+
 - npm
 
-ESPN’s public endpoints may throttle requests or be temporarily unavailable. The app shows explicit fallback states when live data cannot be loaded.
+ESPN’s public endpoints may throttle requests or be temporarily unavailable. The app uses sample/off-day states where appropriate and explains when individual game details have not been published.
 
 ## Run locally
 

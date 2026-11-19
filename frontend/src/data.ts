@@ -31,12 +31,15 @@ export type GameRow = Row & {
 
 export type ScoreGame = {
   id: string
+  date?: string
   status: string
   statusCode: number
-  home: { id: string; name: string; abbreviation: string; score: number | null; logo?: string }
-  away: { id: string; name: string; abbreviation: string; score: number | null; logo?: string }
+  home: { id: string; name: string; abbreviation: string; score: number | null; logo?: string; linescores?: string[] }
+  away: { id: string; name: string; abbreviation: string; score: number | null; logo?: string; linescores?: string[] }
   period?: number
   clock?: string
+  venue?: string
+  broadcast?: string
 }
 
 export type PlayerPayload = {
@@ -144,6 +147,8 @@ type EspnEvent = {
     date?: string
     status?: EspnEvent['status']
     competitors?: EspnCompetitor[]
+    venue?: { fullName?: string }
+    broadcasts?: Array<{ names?: string[] }>
   }>
 }
 
@@ -152,6 +157,7 @@ type EspnCompetitor = {
   homeAway?: string
   score?: string | number | { value?: number; displayValue?: string }
   winner?: boolean
+  linescores?: Array<{ displayValue?: string; value?: number }>
   team?: {
     id?: string
     location?: string
@@ -467,6 +473,7 @@ function eventTeams(event: EspnEvent): ScoreGame {
   const statusCode = state === 'in' ? 2 : state === 'post' ? 3 : 1
   return {
     id: competition.id ?? event.id,
+    date: eventDate(event),
     status: eventStatus(event).type?.shortDetail
       ?? eventStatus(event).type?.detail
       ?? eventStatus(event).type?.description
@@ -474,6 +481,10 @@ function eventTeams(event: EspnEvent): ScoreGame {
     statusCode,
     home: mapCompetitor(home, statusCode),
     away: mapCompetitor(away, statusCode),
+    period: eventStatus(event).period,
+    clock: eventStatus(event).displayClock,
+    venue: competition.venue?.fullName,
+    broadcast: competition.broadcasts?.flatMap((broadcast) => broadcast.names ?? []).join(', '),
   }
 }
 
@@ -487,6 +498,7 @@ function mapCompetitor(competitor: EspnCompetitor | undefined, statusCode: numbe
     abbreviation: team?.abbreviation ?? '',
     score: statusCode === 1 || scoreValue === undefined || scoreValue === null || scoreValue === '' ? null : Number(scoreValue),
     logo: competitor?.team?.logos?.[0]?.href ?? '',
+    linescores: competitor?.linescores?.map((line) => String(line.displayValue ?? line.value ?? '—')) ?? [],
   }
 }
 
@@ -700,7 +712,7 @@ type TeamResponse = {
 type StandingsResponse = {
   children?: Array<{
     abbreviation?: string
-    standings?: { entries?: Array<{ team?: { id?: string; location?: string; name?: string }; stats?: Array<{ name?: string; value?: number; displayValue?: string }> }> }
+    standings?: { entries?: Array<{ team?: { id?: string; location?: string; name?: string; abbreviation?: string; logos?: Array<{ href?: string }> }; stats?: Array<{ name?: string; value?: number; displayValue?: string }> }> }
   }>
 }
 
@@ -717,17 +729,28 @@ function mapStandings(response: StandingsResponse): Row[] {
       .map((entry, index) => {
         const stats = statValues([entry])
         const team = entry.team ?? {}
+        const detail = new Map((entry.stats ?? []).map((stat) => [stat.name ?? '', stat.displayValue ?? (typeof stat.value === 'number' ? String(stat.value) : '—')]))
         const streak = stats.get('streak')
         return {
           TeamID: team.id,
           TeamCity: team.location,
           TeamName: team.name,
+          Abbreviation: team.abbreviation,
+          Logo: team.logos?.[0]?.href,
           Conference: conference.abbreviation,
           PlayoffRank: index + 1,
           WINS: stats.get('wins'),
           LOSSES: stats.get('losses'),
           WinPCT: stats.get('leagueWinPercent'),
           ConferenceGamesBack: stats.get('gamesBehind'),
+          HOME: detail.get('Home'),
+          AWAY: detail.get('Road'),
+          DIV: detail.get('vs. Div.'),
+          CONF: detail.get('vs. Conf.'),
+          L10: detail.get('Last Ten Games'),
+          PPG: stats.get('avgPointsFor'),
+          OPPG: stats.get('avgPointsAgainst'),
+          DIFF: stats.get('differential'),
           GAMES_PLAYED: stats.get('gamesPlayed') ?? ((stats.get('wins') ?? 0) + (stats.get('losses') ?? 0)),
           REMAINING: Math.max(0, 82 - (stats.get('gamesPlayed') ?? ((stats.get('wins') ?? 0) + (stats.get('losses') ?? 0)))),
           strCurrentStreak: typeof streak === 'number' && streak !== 0
