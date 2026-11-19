@@ -49,12 +49,12 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
       : Number(game?.FG3A) > 0 ? (Number(game?.FG3M ?? 0) / Number(game?.FG3A)) * 100 : NaN
     const minutes = minutesValue(stats.MIN)
     const background = context.createLinearGradient(0, 0, 1080, 1350)
-    background.addColorStop(0, '#131722')
-    background.addColorStop(1, '#080a0f')
+    background.addColorStop(0, '#131b2e')
+    background.addColorStop(1, '#0b101b')
     context.fillStyle = background
     context.fillRect(0, 0, 1080, 1350)
 
-    context.fillStyle = '#e03a3e'
+    context.fillStyle = '#e11d48'
     context.beginPath()
     context.moveTo(820, 0)
     context.lineTo(1080, 0)
@@ -64,27 +64,27 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
     context.globalAlpha = 0.12
     context.fill()
     context.globalAlpha = 1
-    context.fillStyle = '#e03a3e'
+    context.fillStyle = '#e11d48'
     context.fillRect(72, 74, 10, 106)
     context.fillStyle = '#eff2f7'
-    context.font = '700 31px Arial, sans-serif'
+    context.font = '700 31px "Plus Jakarta Sans", Arial, sans-serif'
     context.fillText('DENI AVDIJA', 110, 108)
     context.fillStyle = '#a8afbb'
-    context.font = '500 18px Arial, sans-serif'
+    context.font = '500 18px Heebo, Arial, sans-serif'
     context.fillText('PORTLAND TRAIL BLAZERS  •  #8', 110, 145)
     context.textAlign = 'right'
     context.fillStyle = '#d5a35b'
-    context.font = '600 17px Arial, sans-serif'
+    context.font = '600 17px Heebo, Arial, sans-serif'
     context.fillText(date.toUpperCase(), 1008, 102)
     context.fillStyle = '#c1c6d0'
-    context.font = '500 18px Arial, sans-serif'
+    context.font = '500 18px Heebo, Arial, sans-serif'
     context.fillText(matchup.toUpperCase(), 1008, 137)
     context.textAlign = 'left'
 
     context.fillStyle = '#f4f6fa'
-    context.font = '900 94px Arial, sans-serif'
+    context.font = '900 94px "Plus Jakarta Sans", Arial, sans-serif'
     context.fillText(mode === 'season' ? 'SEASON' : 'GAME', 72, 310)
-    context.fillStyle = '#e03a3e'
+    context.fillStyle = '#e11d48'
     context.fillText(mode === 'season' ? 'AVERAGES' : 'REPORT', 72, 410)
 
     const heroStats = [
@@ -94,16 +94,16 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
     ]
     heroStats.forEach(([label, value], index) => {
       const x = 72 + index * 322
-      context.fillStyle = index === 0 ? '#29171d' : '#1a202b'
+      context.fillStyle = index === 0 ? '#2b1b2b' : '#1a243b'
       context.fillRect(x, 490, 294, 268)
-      context.strokeStyle = index === 0 ? '#87343b' : '#343c49'
+      context.strokeStyle = index === 0 ? '#9a304d' : '#3a4963'
       context.lineWidth = 2
       context.strokeRect(x, 490, 294, 268)
       context.fillStyle = '#9da6b4'
-      context.font = '700 21px Arial, sans-serif'
+      context.font = '700 21px Heebo, Arial, sans-serif'
       context.fillText(label, x + 24, 540)
       context.fillStyle = '#f4f6fa'
-      context.font = '900 100px Arial, sans-serif'
+      context.font = '900 100px "Plus Jakarta Sans", Arial, sans-serif'
       context.fillText(value, x + 23, 676)
     })
 
@@ -116,13 +116,13 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
     ]
     secondary.forEach(([label, value], index) => {
       const x = 72 + index * 198
-      context.fillStyle = '#161b25'
+      context.fillStyle = '#1a243b'
       context.fillRect(x, 800, 176, 150)
       context.fillStyle = '#8993a2'
-      context.font = '700 17px Arial, sans-serif'
+      context.font = '700 17px Heebo, Arial, sans-serif'
       context.fillText(label, x + 18, 846)
       context.fillStyle = '#f1f3f6'
-      context.font = '800 31px Arial, sans-serif'
+      context.font = '800 31px "Plus Jakarta Sans", Arial, sans-serif'
       context.fillText(value, x + 18, 903)
     })
 
@@ -130,22 +130,22 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
       const teamScore = Number(game.TEAM_SCORE)
       const opponentScore = Number(game.OPPONENT_SCORE)
       context.fillStyle = '#c4cad4'
-      context.font = '600 19px Arial, sans-serif'
+      context.font = '600 19px Heebo, Arial, sans-serif'
       context.fillText('FINAL SCORE', 74, 1040)
       context.fillStyle = '#f4f6fa'
-      context.font = '800 34px Arial, sans-serif'
+      context.font = '800 34px "Plus Jakarta Sans", Arial, sans-serif'
       context.fillText(`${Number.isFinite(teamScore) ? teamScore : '—'}  —  ${Number.isFinite(opponentScore) ? opponentScore : '—'}`, 74, 1092)
       const result = game.WL ?? (Number.isFinite(teamScore) && Number.isFinite(opponentScore) ? teamScore > opponentScore ? 'W' : 'L' : '—')
       context.fillStyle = result === 'W' ? '#1f4539' : '#40262c'
       context.fillRect(840, 1031, 168, 64)
       context.fillStyle = result === 'W' ? '#86dfb5' : '#f0969c'
-      context.font = '800 27px Arial, sans-serif'
+      context.font = '800 27px "Plus Jakarta Sans", Arial, sans-serif'
       context.textAlign = 'center'
       context.fillText(result === '—' ? 'RESULT —' : result === 'W' ? 'WIN' : 'LOSS', 924, 1072)
       context.textAlign = 'left'
     } else {
       context.fillStyle = '#8792a1'
-      context.font = '500 18px Arial, sans-serif'
+      context.font = '500 18px Heebo, Arial, sans-serif'
       context.fillText('Regular season per-game averages', 74, 1062)
     }
     context.strokeStyle = '#343b47'
@@ -154,9 +154,9 @@ function createShareImage(mode: CardMode, player: PlayerPayload): Promise<Blob> 
     context.lineTo(1008, 1206)
     context.stroke()
     context.fillStyle = '#9ca5b2'
-    context.font = '600 17px Arial, sans-serif'
+    context.font = '600 17px Heebo, Arial, sans-serif'
     context.fillText('LIVE NBA ANALYTICS  •  GITHUB PAGES', 72, 1253)
-    context.fillStyle = '#e03a3e'
+    context.fillStyle = '#e11d48'
     context.fillRect(72, 1285, 936, 4)
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('The PNG could not be generated.')), 'image/png')
   })
@@ -204,14 +204,14 @@ export function DeniShareCard({ player }: { player: PlayerPayload }) {
 
   return (
     <>
-      <button className="share-card-trigger" onClick={() => { setOpen(true); setMessage('') }}><Share2 size={15} /> שתף כרטיס משחק (WhatsApp / תמונה)</button>
+      <button className="share-card-trigger" dir="rtl" lang="he" onClick={() => { setOpen(true); setMessage('') }}><Share2 size={15} /> שתף כרטיס משחק (WhatsApp / תמונה)</button>
       {open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}>
         <section className="share-modal glass-modal" role="dialog" aria-modal="true" aria-labelledby="share-title">
           <button className="modal-close" aria-label="Close share card" onClick={() => setOpen(false)}><X size={19} /></button>
           <p className="eyebrow">RIP CITY · SHARE CARD</p><h2 id="share-title">Deni Avdija</h2>
           <div className="share-mode-switch">
-            <button className={mode === 'latest' ? 'active' : ''} onClick={() => setMode('latest')}>המשחק האחרון</button>
-            <button className={mode === 'season' ? 'active' : ''} onClick={() => setMode('season')}>ממוצעי העונה</button>
+            <button dir="rtl" lang="he" className={mode === 'latest' ? 'active' : ''} onClick={() => setMode('latest')}>המשחק האחרון</button>
+            <button dir="rtl" lang="he" className={mode === 'season' ? 'active' : ''} onClick={() => setMode('season')}>ממוצעי העונה</button>
           </div>
           <div className="share-preview">
             <div className="share-preview-top"><b>DENI AVDIJA</b><span>{mode === 'season' ? `${player.season} SEASON` : date}</span><small>{mode === 'season' ? 'PORTLAND TRAIL BLAZERS' : game?.MATCHUP ?? 'PORTLAND TRAIL BLAZERS'}</small></div>
@@ -220,7 +220,7 @@ export function DeniShareCard({ player }: { player: PlayerPayload }) {
             {mode === 'latest' && game && <div className="share-final-score"><span>FINAL SCORE</span><strong>{game.TEAM_SCORE ?? '—'} — {game.OPPONENT_SCORE ?? '—'}</strong><b className={game.WL === 'W' ? 'positive' : 'negative'}>{game.WL ?? '—'}</b></div>}
             <footer>LIVE NBA ANALYTICS · GITHUB PAGES</footer>
           </div>
-          <div className="share-actions"><button onClick={async () => { try { downloadBlob(await createShareImage(mode, player)); setMessage('הכרטיס נשמר כתמונה PNG.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'ההורדה נכשלה.') } }}><ImageDown size={16} /> הורד PNG</button><button className="primary-share" onClick={() => void shareImage()}><Share2 size={16} /> שתף ב-WhatsApp</button></div>
+          <div className="share-actions"><button dir="rtl" lang="he" onClick={async () => { try { downloadBlob(await createShareImage(mode, player)); setMessage('הכרטיס נשמר כתמונה PNG.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'ההורדה נכשלה.') } }}><ImageDown size={16} /> הורד PNG</button><button dir="rtl" lang="he" className="primary-share" onClick={() => void shareImage()}><Share2 size={16} /> שתף ב-WhatsApp</button></div>
           {message && <p className="share-feedback" role="status">{message}</p>}
         </section>
       </div>}
@@ -300,7 +300,7 @@ export function HighlightsHub({ latestGame }: { latestGame?: GameRow }) {
 
   return (
     <section className="media-hub">
-      <div className="media-heading"><div><p className="eyebrow">PLAY OF THE NIGHT · RIP CITY</p><h2>Highlights &amp; Plays <span>(היילייטס ומהלכים)</span></h2></div><Video size={21} /></div>
+      <div className="media-heading"><div><p className="eyebrow">PLAY OF THE NIGHT · RIP CITY</p><h2>Highlights &amp; Plays <span dir="rtl" lang="he">(היילייטס ומהלכים)</span></h2></div><Video size={21} /></div>
       <div className="media-feature surface">
         <div className="video-frame">{selected.videoId
           ? <iframe title={selected.title} src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(selected.videoId)}`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />

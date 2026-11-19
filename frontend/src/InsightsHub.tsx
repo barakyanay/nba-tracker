@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, ArrowDownRight, ArrowUpRight, Award, CalendarDays, Flame, Radio, TrendingUp } from 'lucide-react'
 import { latestPlayerGame, loadLeagueLeaderCategory, loadWeeklyTopPerformer, type InsightsPayload, type LeaguePayload, type LeagueLeader, type OutlierPerformance, type PlayerPayload, type TeamPayload } from './data'
+import { PlayerAvatar, TeamLogo } from './Visuals'
 
 const LEADER_TABS = [
   { key: 'points', label: 'POINTS', stat: 'PTS', suffix: 'PPG' },
@@ -73,8 +74,8 @@ export function LeagueLeadersHub({ insights, player, error }: {
       <div className="leader-grid">
         {leaders.length ? leaders.map((leader, index) => <article className={`leader-card glass-panel ${leader.id === '4683021' || /deni avdija/i.test(leader.name) ? 'leader-deni' : ''}`} key={`${active}-${leader.id}`}>
           <div className="leader-rank">{String(index + 1).padStart(2, '0')}</div>
-          {leader.headshot ? <img className="leader-headshot" src={leader.headshot} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <div className="leader-headshot leader-initial">{leader.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div>}
-          <div className="leader-player"><strong>{leader.name}</strong><span><b>{leader.team}</b> {leader.teamName}</span></div>
+          <PlayerAvatar playerId={leader.id} name={leader.name} teamAbbr={leader.team} size={48} className="leader-headshot" />
+          <div className="leader-player"><strong>{leader.name}</strong><span><TeamLogo abbr={leader.team} size={19} /> {leader.teamName}</span></div>
           <div className="leader-value"><strong>{leader.displayValue || nice(leader.value)}</strong><small>{category.suffix}</small></div>
         </article>) : <div className="quiet-empty leaders-empty">{categoryLoading ? 'Loading the top 10 from ESPN…' : categoryError ? 'ESPN’s league-leader feed is temporarily unavailable. Try refreshing when the service responds.' : 'League leaders will appear here when the season statistics endpoint is available.'}</div>}
       </div>
@@ -101,7 +102,7 @@ export function HistoryFeed({ insights, player, error }: { insights: InsightsPay
       {deniAnomalies.length > 0 ? <div className="deni-alert glass-panel"><div className="alert-icon"><Flame size={18} /></div><div><span>DENI AVDIJA · SEASON-HIGH WATCH</span><strong>{deniAnomalies[0].reason}</strong><small>{deniAnomalies[0].gameTitle} · {day(deniAnomalies[0].date)}</small></div></div> : latestGame ? <div className="deni-alert glass-panel"><div className="alert-icon"><TrendingUp size={18} /></div><div><span>DENI AVDIJA · SEASON TRACKER</span><strong>Latest: {nice(latestGame.PTS, 0)} PTS · {nice(latestGame.REB, 0)} REB · {nice(latestGame.AST, 0)} AST</strong><small>Season high watch compares recent game logs; career highs require a complete historical archive.</small></div></div> : null}
       <div className="history-section-title"><div><p className="eyebrow">THE LAST 48 HOURS</p><h2>Outlier performances</h2></div><span className="history-count">{anomalies.length} ALERT{anomalies.length === 1 ? '' : 'S'}</span></div>
       <div className="outlier-grid">{anomalies.length ? anomalies.slice(0, 18).map((item) => <article className="outlier-card glass-panel" key={item.id}>
-        {item.headshot ? <img src={item.headshot} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="outlier-avatar">{item.player.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span>}
+        <PlayerAvatar playerId={item.playerId} name={item.player} teamAbbr={item.team} size={44} className="outlier-player-avatar" />
         <div className="outlier-main"><div className="outlier-meta"><b>{item.player}</b><span>{item.team} · {day(item.date)}</span></div><div className="outlier-line"><b>{item.points} PTS</b><span>{item.rebounds} REB</span><span>{item.assists} AST</span><span>{item.steals} STL</span><span>{item.blocks} BLK</span></div><div className="outlier-reason">{item.reason}</div></div>
       </article>) : <div className="quiet-empty full-width">{error ? 'ESPN’s recent scoreboard or box-score scan is temporarily unavailable. Recent games will be checked again automatically.' : insights ? 'No qualifying outlier performances in the recent completed/live game boxes. Thresholds: 40+ PTS, 15+ AST, 18+ REB, 5+ STL/BLK, or a triple-double.' : 'Connect to ESPN to scan recent NBA box scores.'}</div>}</div>
       <div className="history-section-title milestones-title"><div><p className="eyebrow">ON THIS DAY · NBA ARCHIVE</p><h2>Milestones in the game</h2></div><CalendarDays size={18} /></div>

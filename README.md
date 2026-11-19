@@ -3,6 +3,7 @@
 A client-side NBA analytics dashboard focused on Deni Avdija, the Portland Trail Blazers, and league-wide game coverage. Its match center supports Israel-time date navigation, live and final scorecards, full game summaries, sortable box scores, team comparisons, play-by-play, and injury reports. Standings include a combined league power view, playoff zones, a Portland what-if simulator, and a 30-team scoring/defense chart. A persistent Deni quick-track dock, game trends, highlights, sharing tools, leaders, and history feed round out the workspace.
 
 The frontend is a static React/Vite app that requests public ESPN JSON endpoints directly from the browser; it does not require the Python backend.
+The interface uses a Midnight Slate color palette, Heebo and Plus Jakarta Sans typography, and shared ESPN logo/headshot components with initials fallbacks.
 
 ## Requirements
 

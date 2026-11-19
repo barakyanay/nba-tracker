@@ -11,6 +11,7 @@ import {
   ZAxis,
 } from 'recharts'
 import type { LeaguePayload, ScoreGame, Row } from './data'
+import { PlayerAvatar, TeamLogo, teamImageUrl } from './Visuals'
 
 type GameTeam = ScoreGame['home'] & { linescores: string[]; winner?: boolean }
 type MatchGame = {
@@ -74,13 +75,11 @@ function mapGames(payload: unknown): MatchGame[] {
       const score = Number(item.score)
       const state = (((event.status as Record<string, unknown> | undefined)?.type as Record<string, unknown> | undefined)?.state)
       const linescores = (item.linescores as Array<{ displayValue?: string; value?: number }> | undefined) ?? []
-      const logos = (team.logos as Array<{ href?: string }> | undefined) ?? []
       return {
         id: String(team.id ?? item.id ?? ''),
         name: String(team.displayName ?? team.name ?? team.abbreviation ?? 'Team'),
         abbreviation: String(team.abbreviation ?? 'NBA'),
         score: state === 'pre' || !Number.isFinite(score) ? null : score,
-        logo: logos[0]?.href,
         linescores: linescores.map((line) => String(line.displayValue ?? line.value ?? '—')),
         winner: item.winner === true,
       }
@@ -113,12 +112,6 @@ function formatDate(date: string): string {
   return date ? new Intl.DateTimeFormat('en-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`)) : 'NBA slate'
 }
 
-function teamLogo(team: GameTeam | { abbreviation?: unknown; TeamID?: unknown }): string | undefined {
-  if ('logo' in team && team.logo) return team.logo
-  const abbr = String(team.abbreviation ?? '')
-  return abbr ? `https://a.espncdn.com/i/teamlogos/nba/500/${abbr.toLowerCase()}.png` : undefined
-}
-
 async function fetchMatchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const cached = matchCache.get(url)
   if (cached && cached.expiresAt > Date.now()) return cached.value as T
@@ -130,11 +123,7 @@ async function fetchMatchJson<T>(url: string, signal?: AbortSignal): Promise<T> 
 }
 
 function TeamBadge({ team }: { team: GameTeam }) {
-  const [failed, setFailed] = useState(false)
-  const src = teamLogo(team)
-  return src && !failed
-    ? <img className="match-team-logo" src={src} alt="" onError={() => setFailed(true)} />
-    : <span className="match-team-fallback">{team.abbreviation}</span>
+  return <TeamLogo abbr={team.abbreviation} size={29} className="match-team-logo-wrap" />
 }
 
 function GameCard({ game, onSelect }: { game: MatchGame; onSelect: () => void }) {
@@ -220,14 +209,14 @@ function GameDetails({ game, onClose }: { game: MatchGame; onClose: () => void }
 
   return <div className="match-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section className="match-drawer" role="dialog" aria-modal="true" aria-label={`${game.away.name} at ${game.home.name}`}>
-      <header className="match-drawer-head"><div><p className="eyebrow">NBA MATCH CENTER · {formatDate(game.date.slice(0, 10))}</p><h2>{game.away.abbreviation} <span>{game.away.score ?? '—'}</span><i>—</i><span>{game.home.score ?? '—'}</span> {game.home.abbreviation}</h2><p>{game.status} · {game.venue ?? 'NBA'}{game.broadcast ? ` · ${game.broadcast}` : ''}</p></div><button className="match-close" onClick={onClose} aria-label="Close game details"><X size={20} /></button></header>
+      <header className="match-drawer-head"><div><p className="eyebrow">NBA MATCH CENTER · {formatDate(game.date.slice(0, 10))}</p><div className="match-header-score"><TeamLogo abbr={game.away.abbreviation} size={45} /><h2>{game.away.abbreviation} <span>{game.away.score ?? '—'}</span><i>—</i><span>{game.home.score ?? '—'}</span> {game.home.abbreviation}</h2><TeamLogo abbr={game.home.abbreviation} size={45} /></div><p>{game.status} · {game.venue ?? 'NBA'}{game.broadcast ? ` · ${game.broadcast}` : ''}</p></div><button className="match-close" onClick={onClose} aria-label="Close game details"><X size={20} /></button></header>
       <div className="match-detail-tabs">{([['box', 'Full box score'], ['comparison', 'Team comparison'], ['plays', 'Play-by-play'], ['injuries', 'Injuries']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} className={tab === id ? 'selected' : ''} onClick={() => setTab(id)}>{label}</button>)}</div>
       {loading && <div className="match-loading"><RefreshCw size={17} className="spin" /> Loading official game details…</div>}
       {error && <div className="match-error"><Info size={15} />{error}</div>}
       {tab === 'box' && <div className="match-table-wrap">
         <div className="match-table-title"><strong>Player box score</strong><span>Click a stat header to sort</span></div>
         <div className="match-scroll"><table className="match-box-table"><thead><tr><th>PLAYER</th>{['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'].map((key) => <th key={key}><button onClick={() => { setDescending(sortKey === key ? !descending : true); setSortKey(key) }}>{key}{sortKey === key ? (descending ? ' ↓' : ' ↑') : ''}</button></th>)}</tr></thead><tbody>
-          {rows.map((row) => <tr key={row.id} className={row.starter ? 'starter-row' : ''}><td><b>{row.name}</b><small>{row.team} · {row.position}{row.dnp ? ` · DNP ${row.dnp ? '' : ''}` : row.starter ? ' · STARTER' : ' · BENCH'}</small></td>{['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'].map((key) => <td key={key}>{row.stats[key] ?? '—'}</td>)}</tr>)}
+          {rows.map((row) => <tr key={row.id} className={row.starter ? 'starter-row' : ''}><td><div className="box-player-cell"><PlayerAvatar playerId={row.id} name={row.name} teamAbbr={String(summary?.boxscore?.players?.find((group) => group.team?.displayName === row.team)?.team?.abbreviation ?? 'NBA')} size={32} /><span><b>{row.name}</b><small>{row.team} · {row.position}{row.dnp ? ' · DNP' : row.starter ? ' · STARTER' : ' · BENCH'}</small></span></div></td>{['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'].map((key) => <td key={key}>{row.stats[key] ?? '—'}</td>)}</tr>)}
           {!rows.length && !loading && <tr><td colSpan={12} className="match-empty">{error ? 'Box score unavailable for this game.' : 'No player statistics published yet.'}</td></tr>}
         </tbody></table></div>
       </div>}
@@ -248,11 +237,9 @@ function StandingsTable({ rows, title, conference }: { rows: Row[]; title: strin
   const shown = conference === 'All' ? rows : rows.filter((row) => String(row.Conference ?? '').toLowerCase().includes(conference.toLowerCase()))
   return <section className="match-standings-section"><div className="match-subheading"><div><p className="eyebrow">REGULAR SEASON · ESPN</p><h3>{title}</h3></div><span>{shown.length} TEAMS</span></div><div className="match-scroll"><table className="match-standings-table"><thead><tr>{['#', 'TEAM', 'W', 'L', 'PCT', 'GB', 'HOME', 'AWAY', 'DIV', 'CONF', 'PPG', 'OPP PPG', '+/-', 'L10', 'STRK'].map((item) => <th key={item}>{item}</th>)}</tr></thead><tbody>{shown.map((row, index) => {
     const rank = conference === 'All' ? index + 1 : Number(row.PlayoffRank ?? index + 1)
-    const team = { TeamID: row.TeamID, abbreviation: row.Abbreviation }
-    const logo = teamLogo(team)
     return <tr key={String(row.TeamID)} className={`${String(row.TeamID) === '22' ? 'portland-row' : ''} ${rank === 7 || rank === 11 ? 'zone-divider' : ''}`}>
       <td><span className={`seed-tag ${conference !== 'All' && rank <= 6 ? 'seed-playoff' : conference !== 'All' && rank <= 10 ? 'seed-playin' : ''}`}>{rank}</span></td>
-      <td className="standing-team">{logo && <img src={logo} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} />}<b>{String(row.TeamCity ?? '')} {String(row.TeamName ?? '')}</b>{conference === 'All' && <small>{String(row.Conference ?? '')}</small>}{String(row.TeamID) === '22' && <small>POR</small>}</td>
+      <td className="standing-team"><TeamLogo abbr={String(row.Abbreviation ?? 'NBA')} size={26} /><b>{String(row.TeamCity ?? '')} {String(row.TeamName ?? '')}</b>{conference === 'All' && <small>{String(row.Conference ?? '')}</small>}{String(row.TeamID) === '22' && <small>POR</small>}</td>
       <td>{String(row.WINS ?? '—')}</td><td>{String(row.LOSSES ?? '—')}</td><td>{typeof row.WinPCT === 'number' ? row.WinPCT.toFixed(3).replace(/^0/, '') : '—'}</td><td>{String(row.ConferenceGamesBack ?? '—')}</td>
       <td>{String(row.HOME ?? '—')}</td><td>{String(row.AWAY ?? '—')}</td><td>{String(row.DIV ?? '—')}</td><td>{String(row.CONF ?? '—')}</td><td>{typeof row.PPG === 'number' ? row.PPG.toFixed(1) : '—'}</td><td>{typeof row.OPPG === 'number' ? row.OPPG.toFixed(1) : '—'}</td><td className={Number(row.DIFF) >= 0 ? 'positive-diff' : 'negative-diff'}>{typeof row.DIFF === 'number' ? `${row.DIFF > 0 ? '+' : ''}${row.DIFF.toFixed(1)}` : '—'}</td><td>{String(row.L10 ?? '—')}</td><td>{String(row.strCurrentStreak ?? '—')}</td>
     </tr>
@@ -261,7 +248,8 @@ function StandingsTable({ rows, title, conference }: { rows: Row[]; title: strin
 
 function TeamScatterMarker(props: { cx?: number; cy?: number; payload?: { abbr?: string } }) {
   const { cx = 0, cy = 0, payload } = props
-  return <g><circle cx={cx} cy={cy} r={9} fill="#b7333a" stroke="#f08c90" strokeWidth={1} /><text x={cx} y={cy + 2.5} fill="#fff" fontSize={5.5} fontWeight={700} textAnchor="middle">{payload?.abbr ?? ''}</text></g>
+  const abbr = payload?.abbr ?? ''
+  return <g><circle cx={cx} cy={cy} r={10} fill="#131b2e" stroke="#8190a8" strokeWidth={.7} /><image href={teamImageUrl(abbr)} x={cx - 8} y={cy - 8} width={16} height={16} preserveAspectRatio="xMidYMid meet" /><text x={cx} y={cy + 15} fill="#b7c3d6" fontSize={6} fontWeight={700} textAnchor="middle">{abbr}</text></g>
 }
 
 function EfficiencyChart({ rows }: { rows: Row[] }) {

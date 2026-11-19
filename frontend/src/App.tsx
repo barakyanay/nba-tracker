@@ -41,6 +41,7 @@ import {
 import { DeniShareCard, GameHighlightLink, HighlightsHub } from './MediaHub'
 import { HistoryFeed, LeagueLeadersHub, WeeklyDigestModal, weeklyDigestKey, weeklyStandingsKey } from './InsightsHub'
 import MatchCenter from './MatchCenter'
+import { PlayerAvatar, TeamLogo } from './Visuals'
 import {
   Area,
   Bar,
@@ -175,7 +176,7 @@ function ScoreGameCard({ game }: { game: ScoreGame }) {
       <div className="game-status"><span className={game.statusCode === 2 ? 'live-dot' : 'status-dot'} />{game.status || 'Scheduled'}</div>
       {[game.away, game.home].map((team, index) => (
         <div className={`score-team ${index === 0 ? 'score-team-first' : ''}`} key={team.id}>
-          <div className={`team-mark ${team.abbreviation === 'POR' ? 'team-mark-red' : ''}`}>{team.abbreviation || 'NBA'}</div>
+          <TeamLogo abbr={team.abbreviation || 'NBA'} size={29} />
           <span>{team.name || team.abbreviation}</span>
           <strong>{team.score ?? '—'}</strong>
         </div>
@@ -264,10 +265,10 @@ function DeniQuickTrack({ player, live, team, onView }: {
     <div className="quick-track-inner">
       <div className="quick-track-heading"><p className="eyebrow"><span className={live?.isLive ? 'live-dot' : 'track-dot'} /> {live?.isLive ? 'LIVE PLAYER TRACKER' : 'DENI AVDIJA · #8'}</p><h2>Quick-track</h2></div>
       <article className={`quick-track-card ${live?.isLive ? 'quick-track-live' : ''}`}>
-        <div className="quick-track-player"><span className="quick-track-number">08</span><div><b>Deni Avdija</b><small>PORTLAND TRAIL BLAZERS</small></div></div>
+        <div className="quick-track-player"><PlayerAvatar playerId="4683021" name="Deni Avdija" teamAbbr="POR" size={54} /><div><b>Deni Avdija</b><small><TeamLogo abbr="POR" size={15} /> PORTLAND TRAIL BLAZERS · #8</small></div></div>
         <span className="quick-track-state">{live?.isLive ? 'LIVE NOW' : milestone}</span>
         <div className="quick-track-stats">{[['PTS', stats?.PTS], ['REB', stats?.REB], ['AST', stats?.AST], ['STL', stats?.STL], ['BLK', stats?.BLK], ['MIN', stats?.MIN], ['FG%', stats?.FG_PCT], ['3P%', stats?.FG3_PCT], ['+/-', stats?.PLUS_MINUS]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{label === 'FG%' || label === '3P%' ? value === undefined ? '—' : `${(Number(value) * 100).toFixed(0)}%` : number(value, 0)}</b></div>)}</div>
-        <div className="quick-track-result">{live?.isLive && live.game ? <><Radio size={13} /><b>{live.game.away.abbreviation} {live.game.away.score ?? 0} — {live.game.home.score ?? 0} {live.game.home.abbreviation}</b><span>{live.game.status}</span></> : game ? <><Trophy size={13} /><b>{String(game.MATCHUP ?? 'Last game')}</b><span>{number(game.TEAM_SCORE, 0)}–{number(game.OPPONENT_SCORE, 0)} · {game.WL ?? 'FINAL'}</span></> : <span>Last completed game loads with player statistics.</span>}</div>
+        <div className="quick-track-result">{live?.isLive && live.game ? <><Radio size={13} /><TeamLogo abbr={live.game.away.abbreviation} size={20} /><b>{live.game.away.score ?? 0} — {live.game.home.score ?? 0}</b><TeamLogo abbr={live.game.home.abbreviation} size={20} /><span>{live.game.status}</span></> : game ? <><Trophy size={13} /><TeamLogo abbr="POR" size={20} /><b>{String(game.MATCHUP ?? 'Last game')}</b><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={20} /><span>{number(game.TEAM_SCORE, 0)}–{number(game.OPPONENT_SCORE, 0)} · {game.WL ?? 'FINAL'}</span></> : <span>Last completed game loads with player statistics.</span>}</div>
         <button className="quick-track-boxscore" onClick={() => { onView('deepdive'); setMobileOpen(false) }}>VIEW FULL PLAYER BOX SCORE <ChevronRight size={14} /></button>
       </article>
       <article className="quick-track-alert"><p className="eyebrow">NEXT PORTLAND TIP · ISRAEL TIME</p>{live?.isLive ? <strong><i className="live-dot" /> Portland is on the floor</strong> : next?.TIP_TIMESTAMP ? <><strong>{String(next.OPPONENT_NAME ?? 'Trail Blazers')}</strong><span>{new Intl.DateTimeFormat('en-IL', { timeZone: 'Asia/Jerusalem', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(String(next.TIP_TIMESTAMP)))} IST</span><Countdown target={String(next.TIP_TIMESTAMP)} /></> : <span>Schedule updates when ESPN publishes the next game.</span>}</article>
@@ -327,11 +328,14 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
   return (
     <>
       <section className="player-hero">
+        <div className="player-hero-visual"><PlayerAvatar playerId="4683021" name="Deni Avdija" teamAbbr="POR" size={164} /><TeamLogo abbr="POR" size={130} className="hero-team-watermark" /></div>
         <div className="hero-copy">
           <div className="hero-kicker"><span className="live-dot" /> PLAYER SPOTLIGHT <span className="hero-season">{player?.season ?? 'NBA SEASON'}</span></div>
           <h1>Deni <span>Avdija</span></h1>
-          <p>Portland Trail Blazers <i /> Forward <i /> #8</p>
+          <p><TeamLogo abbr="POR" size={22} /> Portland Trail Blazers <i /> Forward <i /> #8</p>
           <div className="hero-note">All-around impact. Every night.</div>
+          <div className="hero-primary-kpis" dir="ltr">{[['PTS', averages.PTS], ['REB', averages.REB], ['AST', averages.AST]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{number(value)}</b></div>)}</div>
+          <div className="hero-efficiency-pills" dir="ltr">{[['FG%', pct(averages.FG_PCT)], ['3P%', pct(averages.FG3_PCT)], ['TS%', pct(averages.TS_PCT)], ['MIN', number(averages.MIN)]].map(([label, value]) => <span key={String(label)}><small>{String(label)}</small><b>{String(value)}</b></span>)}</div>
         </div>
         <div className="hero-number">8</div>
         <div className="hero-watermark">RIP CITY</div>
@@ -458,9 +462,9 @@ function PlayerComparison({ roster, playerStats, loading }: { roster: Row[]; pla
       {loading && !roster.length ? <div className="quiet-empty">Loading Portland player stats…</div> : !comparison ? <div className="quiet-empty">Teammate comparisons are unavailable right now.</div> : (
         <div className="comparison-layout">
           <div className="comparison-players">
-            {[{ name: 'Deni Avdija', color: 'var(--red)', stats: deni }, { name: String(comparison.PLAYER), color: '#80a6d9', stats: comparison }].map((player) => (
+            {[{ name: 'Deni Avdija', id: '4683021', color: 'var(--red)', stats: deni }, { name: String(comparison.PLAYER), id: String(comparison.PLAYER_ID ?? ''), color: '#80a6d9', stats: comparison }].map((player) => (
               <div className="compare-player" key={player.name}>
-                <div className="compare-player-title"><span className="compare-dot" style={{ background: player.color }} /><strong>{player.name}</strong><small>PER GAME</small></div>
+                <div className="compare-player-title"><PlayerAvatar playerId={player.id} name={player.name} teamAbbr="POR" size={40} /><span className="compare-dot" style={{ background: player.color }} /><strong>{player.name}</strong><small>PER GAME</small></div>
                 {metrics.map((metric) => {
                   const raw = player.stats?.[metric.key]
                   const value = metric.key === 'FG_PCT' ? pct(raw) : number(raw)
@@ -498,16 +502,16 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
           {data?.upcoming.length ? <div className="schedule-list">{data.upcoming.map((game, index) => {
             const home = String(game.HOME_TEAM_ID) === '22'
             const opponent = home ? game.VISITOR_TEAM_NAME : game.HOME_TEAM_NAME
-            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><div className="team-mark">{game.OPPONENT_LOGO ? <img src={String(game.OPPONENT_LOGO)} alt="" /> : String(opponent ?? 'NBA').slice(0, 3).toUpperCase()}</div><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<ChevronRight size={15} className="row-chevron" /></div>
+            return             <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={32} /><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<ChevronRight size={15} className="row-chevron" /></div>
           })}</div> : <div className="quiet-empty">{loading ? 'Loading schedule…' : 'Upcoming games will appear here when the season schedule is available.'}</div>}
         </section>
         <section className="surface schedule-card recent-card"><div className="section-title"><div><p className="eyebrow">Last five</p><h2>Recent results</h2></div><Activity size={17} className="title-icon" /></div>
-          {data?.recent.length ? <div className="schedule-list">{data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><div className={`team-mark ${game.WL === 'W' ? 'team-mark-red' : ''}`}>{(game.MATCHUP ?? 'NBA').split(' ').pop()?.replace(/[^A-Z]/g, '').slice(0, 3)}</div><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'}–{game.OPPONENT_PTS ?? '—'}</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
+          {data?.recent.length ? <div className="schedule-list">{data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={31} /><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'}–{game.OPPONENT_PTS ?? '—'}</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
         </section>
       </div>
       <section className="surface table-section roster-section"><SectionTitle kicker="Built for the grind" title="The roster" action={<span className="muted-label">{data?.roster.length ?? '—'} PLAYERS <Users size={14} /></span>} />
         {data?.roster.length ? <div className="table-scroll"><table><thead><tr><th>PLAYER</th><th>POS</th><th>HEIGHT</th><th>WEIGHT</th><th>EXP</th><th>PTS</th><th>REB</th><th>AST</th><th>MIN</th></tr></thead><tbody>
-          {data.roster.map((player, index) => <tr key={String(player.PLAYER_ID ?? index)}><td className="roster-name"><span className="roster-avatar">{String(player.PLAYER ?? '?').split(' ').map((part) => part[0]).slice(-2).join('')}</span>{String(player.PLAYER ?? 'Player')}</td><td>{String(player.POSITION ?? '—')}</td><td>{String(player.HEIGHT ?? '—')}</td><td>{String(player.WEIGHT ?? '—')}</td><td>{String(player.EXP ?? '—')}</td><td className="strong-cell">{number(player.PTS)}</td><td>{number(player.REB)}</td><td>{number(player.AST)}</td><td>{number(player.MIN)}</td></tr>)}
+          {data.roster.map((player, index) => <tr key={String(player.PLAYER_ID ?? index)}><td className="roster-name"><PlayerAvatar playerId={String(player.PLAYER_ID ?? '')} name={String(player.PLAYER ?? 'Player')} teamAbbr="POR" size={35} />{String(player.PLAYER ?? 'Player')}</td><td>{String(player.POSITION ?? '—')}</td><td>{String(player.HEIGHT ?? '—')}</td><td>{String(player.WEIGHT ?? '—')}</td><td>{String(player.EXP ?? '—')}</td><td className="strong-cell">{number(player.PTS)}</td><td>{number(player.REB)}</td><td>{number(player.AST)}</td><td>{number(player.MIN)}</td></tr>)}
         </tbody></table></div> : !loading && !error ? <div className="quiet-empty">Roster data is not available right now.</div> : null}
       </section>
     </>
@@ -601,7 +605,7 @@ function CommandCenter({ player, live, team, league, insights }: {
         <div className="command-jersey">08</div>
       </div>
       <div className="command-summary-grid">
-        <article className="command-spotlight glass-panel"><div className="command-card-head"><span className="eyebrow">PLAYER SPOTLIGHT · #8</span>{live?.isLive && <span className="command-live-pill"><i /> LIVE NOW</span>}</div><h2>Deni <span>Avdija</span></h2><p>PORTLAND TRAIL BLAZERS · FORWARD</p><div className="command-stat-row">{[['PTS', averages.PTS], ['REB', averages.REB], ['AST', averages.AST]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{number(value)}</b></div>)}</div><div className="command-spotlight-bottom"><span>SEASON AVERAGES</span>{lastGame && <span>LAST GAME · {number(lastGame.PTS, 0)} PTS</span>}</div></article>
+        <article className="command-spotlight glass-panel"><div className="command-card-head"><span className="eyebrow">PLAYER SPOTLIGHT · #8</span>{live?.isLive && <span className="command-live-pill"><i /> LIVE NOW</span>}</div><div className="command-player-identity"><PlayerAvatar playerId="4683021" name="Deni Avdija" teamAbbr="POR" size={76} /><div><h2>Deni <span>Avdija</span></h2><p><TeamLogo abbr="POR" size={19} /> PORTLAND TRAIL BLAZERS · FORWARD</p></div></div><div className="command-stat-row" dir="ltr">{[['PTS', averages.PTS], ['REB', averages.REB], ['AST', averages.AST]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{number(value)}</b></div>)}</div><div className="command-spotlight-bottom"><span>SEASON AVERAGES</span>{lastGame && <span>LAST GAME · {number(lastGame.PTS, 0)} PTS</span>}</div></article>
         <article className={`command-next glass-panel ${live?.isLive ? 'command-next-live' : ''}`}><span className="eyebrow">{live?.isLive ? 'LIVE GAME' : 'NEXT TIP · ISRAEL TIME'}</span><h2>{live?.isLive ? `${live.game?.away.abbreviation ?? 'POR'} ${live.game?.away.score ?? 0} — ${live.game?.home.score ?? 0} ${live.game?.home.abbreviation ?? ''}` : String(next?.OPPONENT_NAME ?? 'Awaiting schedule')}</h2><p>{live?.isLive ? live.game?.status : next ? `${next.IS_HOME ? 'HOME' : 'AWAY'} · ${localTip}` : 'Portland’s next tip-off will appear when ESPN publishes the schedule.'}</p>{live?.isLive ? <span className="command-countdown"><Radio size={14} /> Deni’s live box score is tracking on the Deep-Dive tab.</span> : next?.TIP_TIMESTAMP ? <Countdown target={String(next.TIP_TIMESTAMP)} /> : <CalendarDays size={20} className="command-muted-icon" />}</article>
       </div>
       <section className="command-alerts"><div className="history-section-title"><div><p className="eyebrow">COURTSIDE SIGNAL</p><h2>Top alerts</h2></div><span className="history-count">{currentAlert ? 'LIVE FEED' : 'DENI WATCH'}</span></div><div className="command-alert-grid">
@@ -690,7 +694,10 @@ export default function App() {
         <div className="mode-switcher" role="group" aria-label="Analytics mode"><button className={isBlazersMode ? 'mode-selected' : ''} onClick={() => setMode('blazers')}>Deni &amp; Blazers Hub</button><button className={!isBlazersMode ? 'mode-selected' : ''} onClick={() => setMode('league')}>NBA League Analytics Lab</button></div>
         <div className="header-actions"><button className="digest-trigger" onClick={openDigest}>WEEKLY DIGEST{digestUnread && <i aria-label="Unread digest" />}</button><div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div></div>
       </header>
-      <nav className="workspace-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id || view === 'command' && item.id === 'deepdive' ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
+      <nav className="workspace-nav" aria-label="Main navigation">{nav.map((item) => {
+        const Icon = item.id === 'games' ? CalendarDays : item.id === 'standings' ? Trophy : item.id === 'trends' ? Activity : Users
+        return <button key={item.id} className={view === item.id || view === 'command' && item.id === 'deepdive' ? 'nav-active' : ''} onClick={() => setView(item.id)}><Icon size={14} />{item.label}</button>
+      })}</nav>
       <LiveTicker
         live={live.data}
         team={team.data}
