@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Activity,
   ArrowUpRight,
+  Bell,
+  BellOff,
   CalendarDays,
   ChevronRight,
   CircleHelp,
@@ -42,6 +44,8 @@ import { DeniShareCard, GameHighlightLink, HighlightsHub } from './MediaHub'
 import { HistoryFeed, LeagueLeadersHub, WeeklyDigestModal, weeklyDigestKey, weeklyStandingsKey } from './InsightsHub'
 import MatchCenter from './MatchCenter'
 import { PlayerAvatar, TeamLogo } from './Visuals'
+import { ScoutingReport, LineupBuilder } from './BlazersTools'
+import { downloadGameCalendarInvite } from './calendar'
 import {
   Area,
   Bar,
@@ -198,7 +202,7 @@ function Countdown({ target }: { target: string }) {
   return <strong className="ticker-countdown">{hours}h {String(minutes).padStart(2, '0')}m {String(seconds).padStart(2, '0')}s</strong>
 }
 
-function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onToggleAutoRefresh }: {
+function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onToggleAutoRefresh, browserAlerts, alertMessage, onToggleBrowserAlerts }: {
   live: LivePayload | null
   team: TeamPayload | null
   lastSync: Date | null
@@ -206,6 +210,9 @@ function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onT
   onRefresh: () => void
   autoRefresh: boolean
   onToggleAutoRefresh: () => void
+  browserAlerts: boolean
+  alertMessage: string
+  onToggleBrowserAlerts: () => void
 }) {
   const nextGame = team?.upcoming.find((game) => Number.isFinite(Date.parse(String(game.TIP_TIMESTAMP))))
   const nextTip = nextGame ? String(nextGame.TIP_TIMESTAMP) : null
@@ -216,6 +223,7 @@ function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onT
         <span className="ticker-sync">{lastSync ? `SYNC ${new Intl.DateTimeFormat('en-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jerusalem' }).format(lastSync)} IST` : 'WAITING FOR FIRST SYNC'}</span>
         <button className="ticker-refresh" aria-label="Refresh NBA data" onClick={onRefresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''} /><span>REFRESH</span></button>
         <label className="ticker-auto"><span>AUTO</span><button aria-label="Toggle automatic refresh" className={`toggle ${autoRefresh ? 'toggle-on' : ''}`} onClick={onToggleAutoRefresh}><i /></button></label>
+        <button className={`browser-alert-toggle ${browserAlerts ? 'browser-alert-enabled' : ''}`} aria-pressed={browserAlerts} onClick={onToggleBrowserAlerts} title={alertMessage || (browserAlerts ? 'Browser alerts enabled' : 'Enable live browser alerts')}><span dir="rtl">{browserAlerts ? <Bell size={13} /> : <BellOff size={13} />} התראות חיות</span></button>
         <details className="ticker-info">
           <summary aria-label="About live data"><Info size={15} /></summary>
           <div className="ticker-popover">Live scores, schedules and player data are fetched directly in this browser from ESPN’s public NBA JSON endpoints. Availability and timing depend on ESPN.</div>
@@ -239,6 +247,22 @@ function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onT
       <div className="ticker-refresh-note">{autoRefresh ? `AUTO ${live?.isLive ? '60S' : '5M'}` : 'AUTO OFF'}</div>
     </aside>
   )
+}
+
+function CalendarExportButton({ game }: { game: Row }) {
+  const [message, setMessage] = useState('')
+  return <span className="calendar-export-wrap" title={message}>
+    <button className="calendar-export-button" type="button" onClick={() => {
+      try {
+        downloadGameCalendarInvite(game)
+        setMessage('ההזמנה ליומן הורדה בהצלחה')
+        window.setTimeout(() => setMessage(''), 3500)
+      } catch (reason) {
+        setMessage(reason instanceof Error ? reason.message : 'לא ניתן ליצור הזמנה למשחק זה')
+      }
+    }}><CalendarDays size={13} /><span dir="rtl">הוסף ליומן (.ics)</span></button>
+    {message && <small className="calendar-export-message" role="status">{message}</small>}
+  </span>
 }
 
 function DeniQuickTrack({ player, live, team, onView }: {
@@ -281,6 +305,11 @@ function DeniQuickTrack({ player, live, team, onView }: {
 function statNumber(value: unknown): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function nullableStat(value: unknown): number | null {
+  const parsed = Number(value)
+  return value === null || value === undefined || value === '' || !Number.isFinite(parsed) ? null : parsed
 }
 
 function IsraeliTime({ value, weekday = false }: { value: unknown; weekday?: boolean }) {
@@ -351,6 +380,7 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
       <div className="stats-grid">
         {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
       </div>
+      <ScoutingReport player={player} />
 
       <section className="live-panel">
         <div className="live-panel-heading">
@@ -502,7 +532,7 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
           {data?.upcoming.length ? <div className="schedule-list">{data.upcoming.map((game, index) => {
             const home = String(game.HOME_TEAM_ID) === '22'
             const opponent = home ? game.VISITOR_TEAM_NAME : game.HOME_TEAM_NAME
-            return             <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={32} /><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<ChevronRight size={15} className="row-chevron" /></div>
+            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={32} /><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<CalendarExportButton game={game} /><ChevronRight size={15} className="row-chevron" /></div>
           })}</div> : <div className="quiet-empty">{loading ? 'Loading schedule…' : 'Upcoming games will appear here when the season schedule is available.'}</div>}
         </section>
         <section className="surface schedule-card recent-card"><div className="section-title"><div><p className="eyebrow">Last five</p><h2>Recent results</h2></div><Activity size={17} className="title-icon" /></div>
@@ -514,6 +544,7 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
           {data.roster.map((player, index) => <tr key={String(player.PLAYER_ID ?? index)}><td className="roster-name"><PlayerAvatar playerId={String(player.PLAYER_ID ?? '')} name={String(player.PLAYER ?? 'Player')} teamAbbr="POR" size={35} />{String(player.PLAYER ?? 'Player')}</td><td>{String(player.POSITION ?? '—')}</td><td>{String(player.HEIGHT ?? '—')}</td><td>{String(player.WEIGHT ?? '—')}</td><td>{String(player.EXP ?? '—')}</td><td className="strong-cell">{number(player.PTS)}</td><td>{number(player.REB)}</td><td>{number(player.AST)}</td><td>{number(player.MIN)}</td></tr>)}
         </tbody></table></div> : !loading && !error ? <div className="quiet-empty">Roster data is not available right now.</div> : null}
       </section>
+      <LineupBuilder roster={data?.roster ?? []} loading={loading} />
     </>
   )
 }
@@ -621,9 +652,12 @@ function CommandCenter({ player, live, team, league, insights }: {
 export default function App() {
   const [view, setView] = useState<View>('command')
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [browserAlerts, setBrowserAlerts] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
   const [lastSync, setLastSync] = useState<Date | null>(null)
   const [digestOpen, setDigestOpen] = useState(false)
   const [digestUnread, setDigestUnread] = useState(false)
+  const previousLiveSnapshot = useRef<{ gameId: string | null; isLive: boolean; points: number | null; rebounds: number | null; assists: number | null } | null>(null)
   const player = useApi(loadPlayerData, FALLBACK_PLAYER, true)
   const live = useApi(loadLiveData, FALLBACK_LIVE, true)
   const team = useApi(loadTeamData, FALLBACK_TEAM, true)
@@ -644,6 +678,63 @@ export default function App() {
     const timer = window.setInterval(() => void refreshAll(), interval)
     return () => window.clearInterval(timer)
   }, [autoRefresh, live.data?.isLive, refreshAll])
+
+  useEffect(() => {
+    try {
+      if (typeof Notification !== 'undefined'
+        && Notification.permission === 'granted'
+        && window.localStorage.getItem('rip-city-browser-alerts') === 'enabled') {
+        setBrowserAlerts(true)
+      }
+    } catch (error) {
+      console.error('Unable to restore browser alert preference.', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    const snapshot = {
+      gameId: live.data?.game?.id ?? null,
+      isLive: live.data?.isLive === true,
+      points: nullableStat(live.data?.stats?.PTS),
+      rebounds: nullableStat(live.data?.stats?.REB),
+      assists: nullableStat(live.data?.stats?.AST),
+    }
+    const previous = previousLiveSnapshot.current
+    const notify = (title: string, body: string, tag: string) => {
+      if (!browserAlerts || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+      const options: NotificationOptions = {
+        body,
+        tag,
+        icon: `${import.meta.env.BASE_URL}icons/app-icon.svg`,
+      }
+      if ('serviceWorker' in navigator) {
+        void navigator.serviceWorker.getRegistration().then((registration) => {
+          if (registration) return registration.showNotification(title, options)
+          new Notification(title, options)
+          return undefined
+        }).catch((error: unknown) => {
+          console.error('Unable to deliver a browser alert through the service worker.', error)
+          new Notification(title, options)
+        })
+      } else {
+        new Notification(title, options)
+      }
+    }
+    if (previous && snapshot.isLive && (!previous.isLive || previous.gameId !== snapshot.gameId)) {
+      notify('Portland is LIVE', `${live.data?.game?.away.abbreviation ?? 'POR'} ${live.data?.game?.away.score ?? 0} — ${live.data?.game?.home.score ?? 0} ${live.data?.game?.home.abbreviation ?? ''}. ${live.data?.game?.status ?? ''}`, `blazers-live-${snapshot.gameId}`)
+    }
+    if (previous?.isLive && snapshot.isLive && previous.gameId === snapshot.gameId) {
+      if (previous.points !== null && snapshot.points !== null && previous.points < 20 && snapshot.points >= 20) {
+        notify('Deni reaches 20 points', `Deni Avdija has ${snapshot.points} points live.`, `deni-20-${snapshot.gameId}`)
+      }
+      const wasDoubleDouble = [previous.points, previous.rebounds, previous.assists].filter((value) => value !== null && value >= 10).length >= 2
+      const isDoubleDouble = [snapshot.points, snapshot.rebounds, snapshot.assists].filter((value) => value !== null && value >= 10).length >= 2
+      if (!wasDoubleDouble && isDoubleDouble) {
+        notify('Deni records a double-double', `${snapshot.points ?? 0} PTS · ${snapshot.rebounds ?? 0} REB · ${snapshot.assists ?? 0} AST`, `deni-double-double-${snapshot.gameId}`)
+      }
+    }
+    previousLiveSnapshot.current = snapshot
+  }, [browserAlerts, live.data])
 
   useEffect(() => {
     if (!live.loading && !team.loading && live.data && team.data) setLastSync(new Date())
@@ -677,6 +768,43 @@ export default function App() {
       setDigestUnread(false)
     }
   }
+  const toggleBrowserAlerts = async () => {
+    setAlertMessage('')
+    if (browserAlerts) {
+      setBrowserAlerts(false)
+      try {
+        window.localStorage.removeItem('rip-city-browser-alerts')
+      } catch (error) {
+        console.error('Unable to save browser alert preference.', error)
+      }
+      return
+    }
+    if (typeof Notification === 'undefined') {
+      setAlertMessage('הדפדפן אינו תומך בהתראות')
+      return
+    }
+    let permission = Notification.permission
+    if (permission === 'default') {
+      try {
+        permission = await Notification.requestPermission()
+      } catch (error) {
+        setAlertMessage('לא ניתן לבקש הרשאת התראות בדפדפן זה')
+        console.error('Unable to request browser notification permission.', error)
+        return
+      }
+    }
+    if (permission !== 'granted') {
+      setAlertMessage(permission === 'denied' ? 'ההתראות חסומות בהגדרות הדפדפן' : 'כדי להפעיל התראות יש לאשר הרשאה')
+      return
+    }
+    setBrowserAlerts(true)
+    setAlertMessage('התראות משחק ואבני דרך של דני הופעלו')
+    try {
+      window.localStorage.setItem('rip-city-browser-alerts', 'enabled')
+    } catch (error) {
+      console.error('Unable to save browser alert preference.', error)
+    }
+  }
   const nav: { id: View; label: string }[] = [
     { id: 'games', label: 'Games & Match Center' },
     { id: 'standings', label: 'Standings & Playoffs' },
@@ -706,6 +834,9 @@ export default function App() {
         onRefresh={() => void refreshAll()}
         autoRefresh={autoRefresh}
         onToggleAutoRefresh={() => setAutoRefresh((enabled) => !enabled)}
+        browserAlerts={browserAlerts}
+        alertMessage={alertMessage}
+        onToggleBrowserAlerts={() => void toggleBrowserAlerts()}
       />
       <main className="main-content">
         <div className="workspace-layout">

@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "Deni & NBA Live Hub",
+  "short_name": "Deni NBA Hub",
+  "description": "Deni Avdija and NBA live scores, stats, and Portland Trail Blazers analytics.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B101B",
+  "theme_color": "#0B101B",
+  "icons": [
+    {
+      "src": "./icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

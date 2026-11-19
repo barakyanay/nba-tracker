@@ -10,6 +10,8 @@ export type GameRow = Row & {
   MIN?: string | number
   PTS?: number
   OPPONENT_PTS?: number
+  OPPONENT_ABBREVIATION?: string
+  OPPONENT_LOGO?: string
   AST_TO?: number
   TS_PCT?: number
   REB?: number
@@ -147,7 +149,7 @@ type EspnEvent = {
     date?: string
     status?: EspnEvent['status']
     competitors?: EspnCompetitor[]
-    venue?: { fullName?: string }
+    venue?: { fullName?: string; address?: { city?: string; state?: string } }
     broadcasts?: Array<{ names?: string[] }>
   }>
 }
@@ -822,6 +824,9 @@ function mapTeamSchedule(events: EspnEvent[]): { recent: GameRow[]; upcoming: Ro
         }).format(new Date(eventDate(event))),
         OPPONENT_LOGO: opponent.logo,
         OPPONENT_ABBREVIATION: opponent.abbreviation,
+        VENUE: event.competitions?.[0]?.venue?.fullName ?? '',
+        VENUE_CITY: event.competitions?.[0]?.venue?.address?.city ?? '',
+        VENUE_STATE: event.competitions?.[0]?.venue?.address?.state ?? '',
         TIP_TIMESTAMP: eventDate(event),
         IS_ISRAEL_FRIENDLY: isIsraelFriendly(eventDate(event)),
         HOME_TEAM_ID: home ? PORTLAND_ID : opponent.id,
@@ -867,6 +872,7 @@ async function mapRoster(athletes: EspnAthlete[]): Promise<{ roster: Row[]; erro
         AST: stats.AST,
         MIN: stats.MIN,
         FG_PCT: stats.FG_PCT,
+        FG3_PCT: stats.FG3_PCT,
         STL: stats.STL,
         BLK: stats.BLK,
       }
