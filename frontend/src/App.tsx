@@ -5,6 +5,7 @@ import {
   Bell,
   BellOff,
   CalendarDays,
+  CalendarPlus,
   ChevronRight,
   CircleHelp,
   Clock3,
@@ -45,7 +46,7 @@ import { HistoryFeed, LeagueLeadersHub, WeeklyDigestModal, weeklyDigestKey, week
 import MatchCenter from './MatchCenter'
 import { PlayerAvatar, TeamLogo } from './Visuals'
 import { ScoutingReport, LineupBuilder } from './BlazersTools'
-import { downloadGameCalendarInvite } from './calendar'
+import { buildGoogleCalendarUrl, downloadGameCalendarInvite } from './calendar'
 import {
   Area,
   Bar,
@@ -532,7 +533,7 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
           {data?.upcoming.length ? <div className="schedule-list">{data.upcoming.map((game, index) => {
             const home = String(game.HOME_TEAM_ID) === '22'
             const opponent = home ? game.VISITOR_TEAM_NAME : game.HOME_TEAM_NAME
-            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={32} /><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<CalendarExportButton game={game} /><ChevronRight size={15} className="row-chevron" /></div>
+            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><TeamLogo abbr={String(game.OPPONENT_ABBREVIATION ?? 'NBA')} size={32} /><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<a className="calendar-export-button google-calendar-button" href={buildGoogleCalendarUrl(game)} target="_blank" rel="noopener noreferrer"><CalendarPlus size={13} /><span dir="rtl">הוסף ליומן גוגל</span></a><CalendarExportButton game={game} /><ChevronRight size={15} className="row-chevron" /></div>
           })}</div> : <div className="quiet-empty">{loading ? 'Loading schedule…' : 'Upcoming games will appear here when the season schedule is available.'}</div>}
         </section>
         <section className="surface schedule-card recent-card"><div className="section-title"><div><p className="eyebrow">Last five</p><h2>Recent results</h2></div><Activity size={17} className="title-icon" /></div>

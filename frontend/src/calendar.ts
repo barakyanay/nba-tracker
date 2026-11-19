@@ -12,6 +12,26 @@ function utcTimestamp(date: Date): string {
   return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 }
 
+export function buildGoogleCalendarUrl(game: Row): string {
+  const start = new Date(String(game.TIP_TIMESTAMP ?? game.GAME_DATE ?? ''))
+  if (Number.isNaN(start.getTime())) throw new Error('The game tip-off time is not available yet.')
+  const end = new Date(start.getTime() + 150 * 60_000)
+  const opponent = String(game.OPPONENT_NAME ?? 'Portland Trail Blazers game')
+  const isHome = game.IS_HOME === true
+  const title = `Portland Trail Blazers ${isHome ? 'vs.' : 'at'} ${opponent}`
+  const arena = [
+    String(game.VENUE ?? ''),
+    String(game.VENUE_CITY ?? ''),
+    String(game.VENUE_STATE ?? ''),
+  ].filter(Boolean).join(', ')
+  const details = [
+    `Portland Trail Blazers ${isHome ? 'home game' : 'away game'} vs. ${opponent}.`,
+    `Live dashboard: ${window.location.href}`,
+  ].join('\n')
+
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${utcTimestamp(start)}/${utcTimestamp(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(arena)}`
+}
+
 export function downloadGameCalendarInvite(game: Row): void {
   const start = new Date(String(game.TIP_TIMESTAMP ?? game.GAME_DATE ?? ''))
   if (Number.isNaN(start.getTime())) throw new Error('The game tip-off time is not available yet.')
