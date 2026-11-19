@@ -18,13 +18,17 @@ import {
 import {
   FALLBACK_LEAGUE,
   FALLBACK_LIVE,
+  FALLBACK_INSIGHTS,
   FALLBACK_PLAYER,
   FALLBACK_TEAM,
+  latestPlayerGame,
+  loadInsights,
   loadLeagueData,
   loadLiveData,
   loadPlayerData,
   loadTeamData,
   type ApiResult,
+  type InsightsPayload,
   type LeaguePayload,
   type LivePayload,
   type PlayerPayload,
@@ -32,6 +36,8 @@ import {
   type ScoreGame,
   type TeamPayload,
 } from './data'
+import { DeniShareCard, GameHighlightLink, HighlightsHub } from './MediaHub'
+import { HistoryFeed, LeagueLeadersHub, WeeklyDigestModal, weeklyDigestKey, weeklyStandingsKey } from './InsightsHub'
 import {
   Area,
   Bar,
@@ -48,7 +54,7 @@ import {
   YAxis,
 } from 'recharts'
 
-type View = 'spotlight' | 'team' | 'league'
+type View = 'command' | 'deepdive' | 'leaders' | 'history'
 
 const YEAR = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()))
 const MONTH = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', month: 'numeric' }).format(new Date()))
@@ -257,7 +263,7 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
   reloadPlayer: () => void
   reloadLive: () => void
 }) {
-  const [chartMetric, setChartMetric] = useState<'points' | 'rebounds' | 'assists' | 'efficiency'>('points')
+  const [chartMetric, setChartMetric] = useState<'points' | 'rebounds' | 'assists' | 'tsPct' | 'minutes'>('points')
   const [chartStyle, setChartStyle] = useState<'area' | 'bar'>('area')
   const wins = player?.games.filter((game) => game.WL === 'W').length ?? 0
   const losses = player?.games.filter((game) => game.WL === 'L').length ?? 0
@@ -340,7 +346,7 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
         <section className="surface chart-card">
           <div className="chart-heading"><div><p className="eyebrow">Last {player?.games.length ?? 15} games</p><h2>Performance trend</h2></div><div className="segmented"><button className={chartStyle === 'area' ? 'selected' : ''} onClick={() => setChartStyle('area')}>Area</button><button className={chartStyle === 'bar' ? 'selected' : ''} onClick={() => setChartStyle('bar')}>Bars</button></div></div>
           <div className="chart-options">
-            {([['points', 'POINTS'], ['rebounds', 'REBOUNDS'], ['assists', 'ASSISTS'], ['efficiency', 'FG% / 3P%']] as const).map(([metric, label]) => <button key={metric} className={chartMetric === metric ? 'metric-selected' : ''} onClick={() => setChartMetric(metric)}>{label}</button>)}
+            {([['points', 'PTS'], ['rebounds', 'REB'], ['assists', 'AST'], ['tsPct', 'TS%'], ['minutes', 'MIN']] as const).map(([metric, label]) => <button key={metric} className={chartMetric === metric ? 'metric-selected' : ''} onClick={() => setChartMetric(metric)}>{label}</button>)}
           </div>
           {player?.trend.length ? <div className="chart-wrap">
             <ResponsiveContainer width="100%" height="100%">
@@ -349,16 +355,13 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
                 <XAxis dataKey="game" tickLine={false} axisLine={false} tick={{ fill: '#777c86', fontSize: 10 }} tickFormatter={(value) => `G${value}`} minTickGap={20} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fill: '#777c86', fontSize: 10 }} />
                 <Tooltip contentStyle={{ background: '#17191f', border: '1px solid #30333b', borderRadius: 8, color: '#f5f5f5' }} labelFormatter={(value, items) => items[0]?.payload?.date ?? `Game ${value}`} />
-                {chartMetric === 'efficiency' ? <>
-                  {chartStyle === 'area' ? <Area type="monotone" dataKey="fgPct" name="FG%" stroke="#e03a3e" fill="#e03a3e" fillOpacity={0.12} /> : <Bar dataKey="fgPct" name="FG%" fill="#e03a3e" radius={[3, 3, 0, 0]} />}
-                  {chartStyle === 'area' ? <Area type="monotone" dataKey="threePct" name="3P%" stroke="#d7a358" fill="#d7a358" fillOpacity={0.08} /> : <Bar dataKey="threePct" name="3P%" fill="#d7a358" radius={[3, 3, 0, 0]} />}
-                </> : chartStyle === 'area'
+                {chartStyle === 'area'
                   ? <Area type="monotone" dataKey={chartMetric} name={chartMetric} stroke="#e03a3e" fill="#e03a3e" fillOpacity={0.16} strokeWidth={2.4} activeDot={{ r: 5 }} />
                   : <Bar dataKey={chartMetric} name={chartMetric} fill="#e03a3e" radius={[3, 3, 0, 0]} />}
               </ComposedChart>
             </ResponsiveContainer>
           </div> : <div className="chart-empty">{playerLoading ? 'Loading the season game log…' : playerError ? 'Season trend is unavailable while ESPN data is offline.' : 'Season trend will appear when games are available.'}</div>}
-          <div className="chart-legend"><span><i className="legend-red" />{chartMetric === 'efficiency' ? 'FG%' : chartMetric.toUpperCase()}</span>{chartMetric === 'efficiency' && <span><i className="legend-gold" />3P%</span>}</div>
+          <div className="chart-legend"><span><i className="legend-red" />{chartMetric === 'tsPct' ? 'TRUE SHOOTING %' : chartMetric === 'minutes' ? 'MINUTES' : chartMetric.toUpperCase()}</span></div>
           <div className="split-summary"><span><b className="positive">{wins} W</b><small>LAST 15</small></span><i /><span><b className="negative">{losses} L</b><small>RESULTS SPLIT</small></span><i /><span><b>{player?.games.length ?? 0}</b><small>GAMES LOGGED</small></span></div>
         </section>
         <section className="surface efficiency-card">
@@ -370,11 +373,11 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
 
       <PlayerComparison roster={team?.roster ?? []} playerStats={averages} loading={team?.roster.length === 0} />
       <section className="surface table-section">
-        <SectionTitle kicker="The last 15" title="Game log" action={<span className="muted-label">{player?.season?.replace('-', '—') ?? NBA_SEASON} REGULAR SEASON</span>} />
+        <SectionTitle kicker="The last 15" title="Game log" action={<><span className="muted-label">{player?.season?.replace('-', '—') ?? NBA_SEASON} REGULAR SEASON</span>{player && <DeniShareCard player={player} />}</>} />
         {playerError ? <LoadError loading={playerLoading} error={playerError} onRetry={reloadPlayer} /> : playerLoading && !player ? <div className="loading-line" /> : (
-          <div className="table-scroll"><table><thead><tr><th>DATE</th><th>MATCHUP</th><th>RESULT</th><th>MIN</th><th>PTS</th><th>REB</th><th>OREB</th><th>DREB</th><th>AST</th><th>STL</th><th>BLK</th><th>FG</th><th>3PT</th><th>FT</th><th>TO</th><th>PF</th><th>+/-</th></tr></thead><tbody>
-            {(player?.games ?? []).map((game, index) => <tr key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><td>{dateLabel(game.GAME_DATE)}</td><td className="matchup-cell">{game.MATCHUP ?? '—'}</td><td><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></td><td>{number(game.MIN)}</td><td className="strong-cell">{number(game.PTS, 0)}</td><td>{number(game.REB, 0)}</td><td>{number(game.OREB, 0)}</td><td>{number(game.DREB, 0)}</td><td>{number(game.AST, 0)}</td><td>{number(game.STL, 0)}</td><td>{number(game.BLK, 0)}</td><td>{game.FGM ?? '—'}-{game.FGA ?? '—'}</td><td>{game.FG3M ?? '—'}-{game.FG3A ?? '—'}</td><td>{game.FTM ?? '—'}-{game.FTA ?? '—'}</td><td>{number(game.TOV, 0)}</td><td>{number(game.PF, 0)}</td><td className={Number(game.PLUS_MINUS) >= 0 ? 'positive' : 'negative'}>{number(game.PLUS_MINUS, 0)}</td></tr>)}
-            {!player?.games.length && <tr><td className="empty-cell" colSpan={17}>No game log is available for this season yet.</td></tr>}
+          <div className="table-scroll"><table><thead><tr><th>DATE</th><th>MATCHUP</th><th>RESULT</th><th>MIN</th><th>PTS</th><th>REB</th><th>OREB</th><th>DREB</th><th>AST</th><th>STL</th><th>BLK</th><th>FG</th><th>3PT</th><th>FT</th><th>TO</th><th>PF</th><th>+/-</th><th>VIDEO</th></tr></thead><tbody>
+            {(player?.games ?? []).map((game, index) => <tr key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><td>{dateLabel(game.GAME_DATE)}</td><td className="matchup-cell">{game.MATCHUP ?? '—'}</td><td><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></td><td>{number(game.MIN)}</td><td className="strong-cell">{number(game.PTS, 0)}</td><td>{number(game.REB, 0)}</td><td>{number(game.OREB, 0)}</td><td>{number(game.DREB, 0)}</td><td>{number(game.AST, 0)}</td><td>{number(game.STL, 0)}</td><td>{number(game.BLK, 0)}</td><td>{game.FGM ?? '—'}-{game.FGA ?? '—'}</td><td>{game.FG3M ?? '—'}-{game.FG3A ?? '—'}</td><td>{game.FTM ?? '—'}-{game.FTA ?? '—'}</td><td>{number(game.TOV, 0)}</td><td>{number(game.PF, 0)}</td><td className={Number(game.PLUS_MINUS) >= 0 ? 'positive' : 'negative'}>{number(game.PLUS_MINUS, 0)}</td><td><GameHighlightLink game={game} /></td></tr>)}
+            {!player?.games.length && <tr><td className="empty-cell" colSpan={18}>No game log is available for this season yet.</td></tr>}
           </tbody></table></div>
         )}
       </section>
@@ -383,7 +386,9 @@ function Spotlight({ player, live, team, playerError, liveError, playerLoading, 
 }
 
 function PlayerComparison({ roster, playerStats, loading }: { roster: Row[]; playerStats: Row; loading: boolean }) {
-  const teammates = roster.filter((player) => String(player.PLAYER_ID) !== '4683021')
+  const teammates = roster
+    .filter((player) => String(player.PLAYER_ID) !== '4683021' && !/^deni avdija$/i.test(String(player.PLAYER ?? '')))
+    .filter((player, index, list) => list.findIndex((other) => String(other.PLAYER_ID ?? other.PLAYER) === String(player.PLAYER_ID ?? player.PLAYER)) === index)
   const [selectedId, setSelectedId] = useState('')
   const deni = roster.find((player) => String(player.PLAYER_ID) === '4683021') ?? { PLAYER: 'Deni Avdija', ...playerStats }
   const comparison = teammates.find((player) => String(player.PLAYER_ID) === selectedId) ?? teammates[0]
@@ -441,6 +446,7 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
         <div className="record-block"><span className="eyebrow">{data?.season?.replace('-', '—') ?? NBA_SEASON} RECORD</span><strong>{record?.wins ?? '—'}<i>—</i>{record?.losses ?? '—'}</strong><span>{record?.conference ?? 'WESTERN CONFERENCE'}{record?.rank ? ` · ${ordinal(record.rank)} IN WEST` : ''}</span></div>
       </section>
       {error && <LoadError loading={loading} error={error} onRetry={reload} />}
+      {data?.sample && <p className="insights-note"><Info size={14} /> Portland roster or schedule data is in fallback mode while ESPN reconnects.</p>}
       {loading && !data && <div className="loading-line" />}
       <div className="team-highlights">
         <div className="surface highlight-tile"><div className="highlight-icon"><Trophy size={17} /></div><div><span>CONFERENCE POSITION</span><strong>{record?.rank ? `#${record.rank}` : '—'}</strong><small>{record?.conference ?? 'Western Conference'}</small></div></div>
@@ -544,6 +550,42 @@ function PlayoffSimulator({ rows }: { rows: Row[] }) {
   )
 }
 
+function CommandCenter({ player, live, team, league, insights }: {
+  player: PlayerPayload | null
+  live: LivePayload | null
+  team: TeamPayload | null
+  league: LeaguePayload | null
+  insights: InsightsPayload | null
+}) {
+  const averages = player?.averages ?? {}
+  const next = team?.upcoming[0]
+  const currentAlert = insights?.anomalies[0]
+  const lastGame = player ? latestPlayerGame(player.games) : undefined
+  const localTip = next?.TIP_TIMESTAMP ? new Intl.DateTimeFormat('en-IL', {
+    timeZone: 'Asia/Jerusalem',
+    dateStyle: 'full',
+    timeStyle: 'short',
+  }).format(new Date(String(next.TIP_TIMESTAMP))) : 'Schedule update pending'
+  return (
+    <section className="command-center">
+      <div className="command-hero glass-panel">
+        <div className="command-hero-copy"><p className="eyebrow"><span className="live-dot" /> RIP CITY · NBA COMMAND CENTER</p><h1>Built for <span>game night.</span></h1><p>Portland basketball, Deni Avdija and the league — live from the court.</p><div className="command-hero-tags"><span>100% CLIENT-SIDE</span><span>ISRAEL TIME</span><span>{player?.season ?? NBA_SEASON}</span></div></div>
+        <div className="command-jersey">08</div>
+      </div>
+      <div className="command-summary-grid">
+        <article className="command-spotlight glass-panel"><div className="command-card-head"><span className="eyebrow">PLAYER SPOTLIGHT · #8</span>{live?.isLive && <span className="command-live-pill"><i /> LIVE NOW</span>}</div><h2>Deni <span>Avdija</span></h2><p>PORTLAND TRAIL BLAZERS · FORWARD</p><div className="command-stat-row">{[['PTS', averages.PTS], ['REB', averages.REB], ['AST', averages.AST]].map(([label, value]) => <div key={String(label)}><small>{String(label)}</small><b>{number(value)}</b></div>)}</div><div className="command-spotlight-bottom"><span>SEASON AVERAGES</span>{lastGame && <span>LAST GAME · {number(lastGame.PTS, 0)} PTS</span>}</div></article>
+        <article className={`command-next glass-panel ${live?.isLive ? 'command-next-live' : ''}`}><span className="eyebrow">{live?.isLive ? 'LIVE GAME' : 'NEXT TIP · ISRAEL TIME'}</span><h2>{live?.isLive ? `${live.game?.away.abbreviation ?? 'POR'} ${live.game?.away.score ?? 0} — ${live.game?.home.score ?? 0} ${live.game?.home.abbreviation ?? ''}` : String(next?.OPPONENT_NAME ?? 'Awaiting schedule')}</h2><p>{live?.isLive ? live.game?.status : next ? `${next.IS_HOME ? 'HOME' : 'AWAY'} · ${localTip}` : 'Portland’s next tip-off will appear when ESPN publishes the schedule.'}</p>{live?.isLive ? <span className="command-countdown"><Radio size={14} /> Deni’s live box score is tracking on the Deep-Dive tab.</span> : next?.TIP_TIMESTAMP ? <Countdown target={String(next.TIP_TIMESTAMP)} /> : <CalendarDays size={20} className="command-muted-icon" />}</article>
+      </div>
+      <section className="command-alerts"><div className="history-section-title"><div><p className="eyebrow">COURTSIDE SIGNAL</p><h2>Top alerts</h2></div><span className="history-count">{currentAlert ? 'LIVE FEED' : 'DENI WATCH'}</span></div><div className="command-alert-grid">
+        {currentAlert ? <article className="command-alert-card glass-panel"><span className="command-alert-icon"><Flame size={17} /></span><div><small>{currentAlert.team} · {dateLabel(currentAlert.date)}</small><b>{currentAlert.player} · {currentAlert.reason}</b><span>{currentAlert.points} PTS · {currentAlert.rebounds} REB · {currentAlert.assists} AST</span></div></article> : lastGame ? <article className="command-alert-card glass-panel"><span className="command-alert-icon"><Activity size={17} /></span><div><small>DENI AVDIJA · LAST GAME</small><b>{number(lastGame.PTS, 0)} PTS · {number(lastGame.REB, 0)} REB · {number(lastGame.AST, 0)} AST</b><span>{String(lastGame.MATCHUP ?? 'Portland')} · {String(lastGame.WL ?? 'RESULT PENDING')}</span></div></article> : <article className="command-alert-card glass-panel"><span className="command-alert-icon"><Info size={17} /></span><div><small>DATA CONNECTION</small><b>ESPN’s game feed is warming up</b><span>Player alerts appear as soon as recent box scores load.</span></div></article>}
+        <article className="command-alert-card glass-panel"><span className="command-alert-icon command-alert-green"><Trophy size={17} /></span><div><small>WESTERN CONFERENCE</small><b>{team?.record.rank ? `PORTLAND · #${team.record.rank} SEED` : 'PLAYOFF SCENARIOS'}</b><span>Use the live simulator to explore the postseason race.</span></div></article>
+      </div></section>
+      <PlayoffSimulator rows={league?.standings ?? []} />
+      {league?.games.length ? <section className="command-scoreboard"><div className="history-section-title"><div><p className="eyebrow">AROUND THE ASSOCIATION</p><h2>Today’s scoreboard</h2></div><span className="history-count">{league.games.length} GAMES</span></div><div className="scoreboard-grid">{league.games.slice(0, 4).map((game) => <ScoreGameCard key={game.id} game={game} />)}</div></section> : null}
+    </section>
+  )
+}
+
 function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | null; loading: boolean; error: string; reload: () => void }) {
   const [conference, setConference] = useState<'East' | 'West'>('West')
   const east = data?.standings.filter((row) => String(row.Conference ?? '').toLowerCase().includes('east')) ?? []
@@ -556,6 +598,7 @@ function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | nul
       {loading && !data && <div className="loading-line" />}
       {data && <div className="scoreboard-grid">{data.games.map((game) => <ScoreGameCard key={game.id} game={game} />)}{!data.games.length && <div className="quiet-empty full-width">{error ? 'Today’s scoreboard is temporarily unavailable.' : 'No NBA games scheduled today. Check back on game day.'}</div>}</div>}
       <section className="surface standings-section"><div className="section-title"><div><p className="eyebrow">The race to the playoffs</p><h2>Conference standings</h2></div><div className="segmented"><button className={conference === 'West' ? 'selected' : ''} onClick={() => setConference('West')}>Western</button><button className={conference === 'East' ? 'selected' : ''} onClick={() => setConference('East')}>Eastern</button></div></div>
+        {data?.sample && <p className="insights-note"><Info size={14} /> Sample conference order · win-loss records will appear when ESPN’s standings feed responds.</p>}
         {data && <StandingsTable rows={conference === 'West' ? west : east} conference={conference} />}
         {!data && !error && <div className="quiet-empty">Conference standings load with today’s scoreboard.</div>}
       </section>
@@ -565,20 +608,24 @@ function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | nul
 }
 
 export default function App() {
-  const [view, setView] = useState<View>('spotlight')
+  const [view, setView] = useState<View>('command')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastSync, setLastSync] = useState<Date | null>(null)
-  const player = useApi(loadPlayerData, FALLBACK_PLAYER, view === 'spotlight')
+  const [digestOpen, setDigestOpen] = useState(false)
+  const [digestUnread, setDigestUnread] = useState(false)
+  const player = useApi(loadPlayerData, FALLBACK_PLAYER, view === 'command' || view === 'deepdive' || view === 'history')
   const live = useApi(loadLiveData, FALLBACK_LIVE, true)
   const team = useApi(loadTeamData, FALLBACK_TEAM, true)
-  const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'league')
+  const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'command' || view === 'leaders')
+  const insights = useApi(loadInsights, FALLBACK_INSIGHTS, true)
   const refreshAll = useCallback(async () => {
     const active = [live.reload(), team.reload()]
-    if (player.data || view === 'spotlight') active.push(player.reload())
-    if (league.data || view === 'league') active.push(league.reload())
+    if (player.data || view === 'command' || view === 'deepdive' || view === 'history') active.push(player.reload())
+    if (league.data || view === 'command' || view === 'leaders') active.push(league.reload())
+    if (insights.data || view === 'command' || view === 'leaders' || view === 'history') active.push(insights.reload())
     await Promise.allSettled(active)
     setLastSync(new Date())
-  }, [league.data, league.reload, live.reload, player.data, player.reload, team.reload, view])
+  }, [insights.data, insights.reload, league.data, league.reload, live.reload, player.data, player.reload, team.reload, view])
 
   useEffect(() => {
     if (!autoRefresh) return
@@ -590,36 +637,68 @@ export default function App() {
   useEffect(() => {
     if (!live.loading && !team.loading && live.data && team.data) setLastSync(new Date())
   }, [live.data, live.loading, team.data, team.loading])
+  useEffect(() => {
+    try {
+      setDigestUnread(window.localStorage.getItem(weeklyDigestKey()) !== 'viewed')
+    } catch {
+      setDigestUnread(false)
+    }
+  }, [])
+  useEffect(() => {
+    const portland = league.data?.standings.find((row) => String(row.TeamID) === '22')
+    if (typeof portland?.PlayoffRank !== 'number' || portland.SAMPLE === true) return
+    try {
+      const key = weeklyStandingsKey()
+      if (!window.localStorage.getItem(key)) {
+        window.localStorage.setItem(key, JSON.stringify({ seed: portland.PlayoffRank, savedAt: new Date().toISOString() }))
+      }
+    } catch {
+      return
+    }
+  }, [league.data])
+  const openDigest = () => {
+    setDigestOpen(true)
+    setDigestUnread(false)
+    if (!league.data) void league.reload()
+    try {
+      window.localStorage.setItem(weeklyDigestKey(), 'viewed')
+    } catch {
+      setDigestUnread(false)
+    }
+  }
   const nav: { id: View; label: string }[] = [
-    { id: 'spotlight', label: 'Deni spotlight' },
-    { id: 'team', label: 'Trail Blazers' },
-    { id: 'league', label: 'NBA league' },
+    { id: 'command', label: 'Command Center' },
+    { id: 'deepdive', label: 'Deni & Blazers' },
+    { id: 'leaders', label: 'League Leaders' },
+    { id: 'history', label: 'Anomalies & Media' },
   ]
 
   return (
     <div className="app-shell">
       <div className="topline"><span>{NBA_SEASON} NBA SEASON</span><span>THE ROSE CITY’S HOME FOR HOOPS <i /> <b>PORTLAND, OR</b></span></div>
       <header className="site-header">
-        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a>
+        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setView('command') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a>
         <nav className="main-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
-        <div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div>
+        <div className="header-actions"><button className="digest-trigger" onClick={openDigest}>WEEKLY DIGEST{digestUnread && <i aria-label="Unread digest" />}</button><div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div></div>
       </header>
       <LiveTicker
         live={live.data}
         team={team.data}
         lastSync={lastSync}
-        loading={live.loading || team.loading || (view === 'spotlight' && player.loading)}
+        loading={live.loading || team.loading || ((view === 'command' || view === 'deepdive') && player.loading)}
         onRefresh={() => void refreshAll()}
         autoRefresh={autoRefresh}
         onToggleAutoRefresh={() => setAutoRefresh((enabled) => !enabled)}
       />
       <main className="main-content">
-        {view === 'spotlight' && <Spotlight player={player.data} live={live.data} team={team.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} />}
-        {view === 'team' && <TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} />}
-        {view === 'league' && <LeagueHub data={league.data} loading={league.loading} error={league.error} reload={league.reload} />}
-        <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM ESPN</span></footer>
+        {view === 'command' && <CommandCenter player={player.data} live={live.data} team={team.data} league={league.data} insights={insights.data} />}
+        {view === 'deepdive' && <><Spotlight player={player.data} live={live.data} team={team.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} /><TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} /></>}
+        {view === 'leaders' && <><LeagueLeadersHub insights={insights.data} player={player.data} error={insights.error} /><LeagueHub data={league.data} loading={league.loading} error={league.error} reload={league.reload} /></>}
+        {view === 'history' && <><HistoryFeed insights={insights.data} player={player.data} error={insights.error} /><HighlightsHub latestGame={player.data ? latestPlayerGame(player.data.games) : undefined} /></>}
+        <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('command') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM ESPN</span></footer>
       </main>
       <div className="mobile-nav">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</div>
+      {digestOpen && <WeeklyDigestModal player={player.data} team={team.data} league={league.data} insights={insights.data} onClose={() => setDigestOpen(false)} />}
     </div>
   )
 }

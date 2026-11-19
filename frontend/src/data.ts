@@ -5,6 +5,8 @@ export type GameRow = Row & {
   GAME_DATE?: string
   MATCHUP?: string
   WL?: string
+  TEAM_SCORE?: number
+  OPPONENT_SCORE?: number
   MIN?: string | number
   PTS?: number
   OPPONENT_PTS?: number
@@ -43,6 +45,7 @@ export type PlayerPayload = {
   averages: Row
   games: GameRow[]
   trend: Row[]
+  sample?: boolean
 }
 
 export type LivePayload = {
@@ -65,17 +68,59 @@ export type TeamPayload = {
   roster: Row[]
   recent: GameRow[]
   upcoming: Row[]
+  sample?: boolean
 }
 
 export type LeaguePayload = {
   date: string
   games: ScoreGame[]
   standings: Row[]
+  sample?: boolean
+}
+
+export type LeagueLeader = {
+  id: string
+  name: string
+  team: string
+  teamName: string
+  headshot: string
+  value: number
+  displayValue: string
+  category: string
+}
+
+export type OutlierPerformance = {
+  id: string
+  playerId: string
+  player: string
+  team: string
+  opponent: string
+  date: string
+  points: number
+  rebounds: number
+  assists: number
+  steals: number
+  blocks: number
+  headshot: string
+  reason: string
+  gameTitle: string
+}
+
+export type InsightsPayload = {
+  leaders: Record<string, LeagueLeader[]>
+  anomalies: OutlierPerformance[]
+  sample?: boolean
 }
 
 export type ApiResult<T> = {
   data: T
   error: string
+}
+
+export function latestPlayerGame(games: GameRow[]): GameRow | undefined {
+  return games.find((game) => game.MIN !== 'DNP' && typeof game.PTS === 'number')
+    ?? games.find((game) => game.MIN !== 'DNP')
+    ?? games[0]
 }
 
 type EspnEvent = {
@@ -157,6 +202,7 @@ export const FALLBACK_PLAYER: PlayerPayload = {
   averages: {},
   games: [],
   trend: [],
+  sample: true,
 }
 
 export const FALLBACK_LIVE: LivePayload = {
@@ -168,6 +214,7 @@ export const FALLBACK_LIVE: LivePayload = {
 
 export const FALLBACK_TEAM: TeamPayload = {
   season: SEASON,
+  sample: true,
   record: { conference: 'Western Conference' },
   roster: ['Deni Avdija', 'Shaedon Sharpe', 'Anfernee Simons', 'Scoot Henderson', 'Toumani Camara', 'Donovan Clingan']
     .map((PLAYER, index) => ({
@@ -191,26 +238,84 @@ export const FALLBACK_LEAGUE: LeaguePayload = {
   date: nbaDate(),
   games: [],
   standings: [
-    ['Oklahoma City', 'Thunder'], ['Houston', 'Rockets'], ['Denver', 'Nuggets'],
-    ['Golden State', 'Warriors'], ['LA', 'Clippers'], ['Portland', 'Trail Blazers'],
-    ['Minnesota', 'Timberwolves'], ['Phoenix', 'Suns'], ['Sacramento', 'Kings'],
-    ['Dallas', 'Mavericks'], ['Memphis', 'Grizzlies'], ['New Orleans', 'Pelicans'],
-    ['San Antonio', 'Spurs'], ['Utah', 'Jazz'], ['Los Angeles', 'Lakers'],
-  ].map(([TeamCity, TeamName], index) => ({
-    TeamID: TeamCity === 'Portland' ? PORTLAND_ID : `sample-west-${index}`,
-    TeamCity,
-    TeamName,
-    Conference: 'West',
-    PlayoffRank: index + 1,
-    WINS: null,
-    LOSSES: null,
-    WinPCT: null,
-    ConferenceGamesBack: null,
-    GAMES_PLAYED: null,
-    REMAINING: null,
-    strCurrentStreak: '—',
-    SAMPLE: true,
-  })),
+    ...[
+      ['Oklahoma City', 'Thunder'], ['Houston', 'Rockets'], ['Denver', 'Nuggets'],
+      ['Golden State', 'Warriors'], ['LA', 'Clippers'], ['Portland', 'Trail Blazers'],
+      ['Minnesota', 'Timberwolves'], ['Phoenix', 'Suns'], ['Sacramento', 'Kings'],
+      ['Dallas', 'Mavericks'], ['Memphis', 'Grizzlies'], ['New Orleans', 'Pelicans'],
+      ['San Antonio', 'Spurs'], ['Utah', 'Jazz'], ['Los Angeles', 'Lakers'],
+    ].map(([TeamCity, TeamName], index) => ({
+      TeamID: TeamCity === 'Portland' ? PORTLAND_ID : `sample-west-${index}`,
+      TeamCity,
+      TeamName,
+      Conference: 'West',
+      PlayoffRank: index + 1,
+      WINS: null,
+      LOSSES: null,
+      WinPCT: null,
+      ConferenceGamesBack: null,
+      GAMES_PLAYED: null,
+      REMAINING: null,
+      strCurrentStreak: '—',
+      SAMPLE: true,
+    })),
+    ...[
+      ['Boston', 'Celtics'], ['New York', 'Knicks'], ['Cleveland', 'Cavaliers'],
+      ['Milwaukee', 'Bucks'], ['Orlando', 'Magic'], ['Philadelphia', '76ers'],
+      ['Indiana', 'Pacers'], ['Miami', 'Heat'], ['Atlanta', 'Hawks'],
+      ['Chicago', 'Bulls'], ['Brooklyn', 'Nets'], ['Toronto', 'Raptors'],
+      ['Detroit', 'Pistons'], ['Charlotte', 'Hornets'], ['Washington', 'Wizards'],
+    ].map(([TeamCity, TeamName], index) => ({
+      TeamID: `sample-east-${index}`,
+      TeamCity,
+      TeamName,
+      Conference: 'East',
+      PlayoffRank: index + 1,
+      WINS: null,
+      LOSSES: null,
+      WinPCT: null,
+      ConferenceGamesBack: null,
+      GAMES_PLAYED: null,
+      REMAINING: null,
+      strCurrentStreak: '—',
+      SAMPLE: true,
+    })),
+  ],
+}
+
+const LEADER_CATEGORIES = [
+  { key: 'points', labels: ['points per game', 'pointspergame'], stat: ['avgPoints', 'points'] },
+  { key: 'assists', labels: ['assists per game', 'assistspergame'], stat: ['avgAssists', 'assists'] },
+  { key: 'rebounds', labels: ['rebounds per game', 'reboundspergame'], stat: ['avgRebounds', 'rebounds'] },
+  { key: 'steals', labels: ['steals per game', 'stealspergame'], stat: ['avgSteals', 'steals'] },
+  { key: 'blocks', labels: ['blocks per game', 'blockspergame'], stat: ['avgBlocks', 'blocks'] },
+  { key: '3pm', labels: ['average 3-point field goals made', '3pointsmadepergame'], stat: ['avgThreePointFieldGoalsMade', 'threePointFieldGoalsMade'] },
+] as const
+
+function sampleLeaders(key: string, values: Array<[string, string, number]>): LeagueLeader[] {
+  return values.map(([name, team, value], index) => ({
+    id: `sample-${key}-${index}`,
+    name,
+    team,
+    teamName: 'Sample standings',
+    headshot: '',
+    value,
+    displayValue: value.toFixed(1),
+    category: key,
+  }))
+}
+
+export const FALLBACK_INSIGHTS: InsightsPayload = {
+  sample: true,
+  leaders: {
+    points: sampleLeaders('points', [['League leader sample', 'NBA', 31.2], ['Scoring sample', 'NBA', 28.4], ['Deni Avdija', 'POR', 24.2]]),
+    assists: sampleLeaders('assists', [['Playmaking sample', 'NBA', 10.1], ['Guard sample', 'NBA', 8.8], ['Deni Avdija', 'POR', 6.1]]),
+    rebounds: sampleLeaders('rebounds', [['Rebounding sample', 'NBA', 12.4], ['Center sample', 'NBA', 10.8], ['Deni Avdija', 'POR', 6.2]]),
+    steals: sampleLeaders('steals', [['Defense sample', 'NBA', 2.1], ['Guard sample', 'NBA', 1.8], ['Deni Avdija', 'POR', 1.0]]),
+    blocks: sampleLeaders('blocks', [['Rim protector sample', 'NBA', 2.3], ['Big sample', 'NBA', 1.9], ['Deni Avdija', 'POR', 0.6]]),
+    '3pm': sampleLeaders('3pm', [['Shooter sample', 'NBA', 4.2], ['Wing sample', 'NBA', 3.6], ['Deni Avdija', 'POR', 2.4]]),
+  },
+  anomalies: [],
 }
 
 function getSeasonYear(): number {
@@ -329,6 +434,7 @@ function mapSeasonStats(response: EspnSeasonStats): Row {
     AST_TO: turnovers ? (assists ?? 0) / turnovers : null,
     FGA: fieldGoalAttempts,
     FTA: freeThrowAttempts,
+    FG3M: values.get('avgThreePointFieldGoalsMade') ?? null,
   }
 }
 
@@ -456,12 +562,21 @@ async function playerGame(event: EspnEvent): Promise<GameRow> {
     GAME_DATE: eventDate(event),
     MATCHUP: portlandHome ? `POR vs. ${opponent.abbreviation}` : `POR @ ${opponent.abbreviation}`,
     WL: portland.score === null || opponent.score === null ? undefined : won ? 'W' : 'L',
+    TEAM_SCORE: portland.score ?? undefined,
+    OPPONENT_SCORE: opponent.score ?? undefined,
   }
 }
 
 function trendRow(game: GameRow, index: number): Row {
   const fieldGoalAttempts = game.FGA ?? 0
   const threePointAttempts = game.FG3A ?? 0
+  const freeThrowAttempts = game.FTA ?? 0
+  const trueShootingAttempts = fieldGoalAttempts + 0.44 * freeThrowAttempts
+  const minutes = typeof game.MIN === 'number'
+    ? game.MIN
+    : typeof game.MIN === 'string' && game.MIN.includes(':')
+      ? Number(game.MIN.split(':')[0]) + Number(game.MIN.split(':')[1]) / 60
+      : Number(game.MIN) || null
   return {
     game: index + 1,
     date: game.GAME_DATE ?? '',
@@ -469,9 +584,10 @@ function trendRow(game: GameRow, index: number): Row {
     points: game.PTS ?? null,
     rebounds: game.REB ?? null,
     assists: game.AST ?? null,
+    tsPct: trueShootingAttempts && game.PTS !== undefined ? (game.PTS / (2 * trueShootingAttempts)) * 100 : null,
     fgPct: fieldGoalAttempts ? ((game.FGM ?? 0) / fieldGoalAttempts) * 100 : null,
     threePct: threePointAttempts ? ((game.FG3M ?? 0) / threePointAttempts) * 100 : null,
-    minutes: typeof game.MIN === 'number' ? game.MIN : Number(game.MIN) || null,
+    minutes,
   }
 }
 
@@ -508,6 +624,7 @@ export async function loadPlayerData(): Promise<ApiResult<PlayerPayload>> {
       averages,
       games,
       trend: games.slice().reverse().map(trendRow),
+      sample: statsResult.status === 'rejected' || scheduleResult.status === 'rejected',
     },
     error: errors.length ? [...new Set(errors)].join(' ') : '',
   }
@@ -766,9 +883,10 @@ export async function loadTeamData(): Promise<ApiResult<TeamPayload>> {
     data: {
       season: SEASON,
       record: team ? mapTeamRecord(team, standings) : FALLBACK_TEAM.record,
-      roster: rosterResult.roster,
+      roster: rosterResult.roster.length ? rosterResult.roster : FALLBACK_TEAM.roster,
       recent: schedule.recent,
       upcoming: schedule.upcoming,
+      sample: !team || !rosterResult.roster.length || scheduleResult.status === 'rejected' || standings.length === 0,
     },
     error: [...new Set(errors)].join(' '),
   }
@@ -781,11 +899,240 @@ export async function loadLeagueData(): Promise<ApiResult<LeaguePayload>> {
   ])
   const errors: string[] = []
   const games = scoreboardResult.status === 'fulfilled' ? scoreboardResult.value : []
-  const standings = standingsResult.status === 'fulfilled' ? mapStandings(standingsResult.value) : []
+  const mappedStandings = standingsResult.status === 'fulfilled' ? mapStandings(standingsResult.value) : []
+  const standings = mappedStandings.length ? mappedStandings : FALLBACK_LEAGUE.standings
   if (scoreboardResult.status === 'rejected') errors.push(errorText(scoreboardResult.reason))
   if (standingsResult.status === 'rejected') errors.push(errorText(standingsResult.reason))
   return {
-    data: { date: nbaDate(), games, standings },
+    data: { date: nbaDate(), games, standings, sample: scoreboardResult.status === 'rejected' || mappedStandings.length === 0 },
+    error: [...new Set(errors)].join(' '),
+  }
+}
+
+type EspnLeaderEntry = {
+  athlete?: {
+    $ref?: string
+    id?: string
+    displayName?: string
+    fullName?: string
+    headshot?: { href?: string }
+    team?: { $ref?: string; abbreviation?: string; displayName?: string }
+  }
+  team?: { $ref?: string; abbreviation?: string; displayName?: string }
+  value?: number
+  displayValue?: string
+  statistics?: Array<{ name?: string; value?: number; displayValue?: string }>
+}
+
+type EspnLeaderAthlete = NonNullable<EspnLeaderEntry['athlete']>
+type EspnLeaderCategory = { name?: string; displayName?: string; leaders?: EspnLeaderEntry[] }
+
+function leaderCategories(payload: unknown): EspnLeaderCategory[] {
+  if (!payload || typeof payload !== 'object') return []
+  const response = payload as { categories?: unknown; leaders?: unknown }
+  if (Array.isArray(response.categories)) return response.categories as EspnLeaderCategory[]
+  if (Array.isArray(response.leaders)) return response.leaders as EspnLeaderCategory[]
+  return []
+}
+
+const ESPN_TEAM_IDENTITIES: Record<string, [string, string]> = {
+  '1': ['ATL', 'Atlanta Hawks'], '2': ['BOS', 'Boston Celtics'], '3': ['NO', 'New Orleans Pelicans'],
+  '4': ['CHI', 'Chicago Bulls'], '5': ['CLE', 'Cleveland Cavaliers'], '6': ['DAL', 'Dallas Mavericks'],
+  '7': ['DEN', 'Denver Nuggets'], '8': ['DET', 'Detroit Pistons'], '9': ['GS', 'Golden State Warriors'],
+  '10': ['HOU', 'Houston Rockets'], '11': ['IND', 'Indiana Pacers'], '12': ['LAC', 'LA Clippers'],
+  '13': ['LAL', 'Los Angeles Lakers'], '14': ['MIA', 'Miami Heat'], '15': ['MIL', 'Milwaukee Bucks'],
+  '16': ['MIN', 'Minnesota Timberwolves'], '17': ['BKN', 'Brooklyn Nets'], '18': ['NY', 'New York Knicks'],
+  '19': ['ORL', 'Orlando Magic'], '20': ['PHI', 'Philadelphia 76ers'], '21': ['PHX', 'Phoenix Suns'],
+  '22': ['POR', 'Portland Trail Blazers'], '23': ['SAC', 'Sacramento Kings'], '24': ['SA', 'San Antonio Spurs'],
+  '25': ['OKC', 'Oklahoma City Thunder'], '26': ['UTAH', 'Utah Jazz'], '27': ['WSH', 'Washington Wizards'],
+  '28': ['TOR', 'Toronto Raptors'], '29': ['MEM', 'Memphis Grizzlies'], '30': ['CHA', 'Charlotte Hornets'],
+}
+
+async function mapLeagueLeaders(
+  payload: unknown,
+  requestedCategories: readonly (typeof LEADER_CATEGORIES)[number][] = LEADER_CATEGORIES,
+): Promise<{ leaders: Record<string, LeagueLeader[]>; error: string }> {
+  const categories = leaderCategories(payload)
+  const errors: string[] = []
+  const leaderGroups = await Promise.all(requestedCategories.map(async ({ key, labels }) => {
+    const category = categories.find((item) => {
+      const name = `${item.name ?? ''} ${item.displayName ?? ''}`.toLowerCase().replace(/[^a-z0-9]/g, '')
+      return labels.some((label) => name.includes(label.replace(/[^a-z0-9]/g, '')))
+    })
+    const leaders = await Promise.all((category?.leaders ?? []).slice(0, 10).map(async (entry, index) => {
+      let athlete = entry.athlete
+      if ((!athlete?.displayName && !athlete?.fullName) && athlete?.$ref) {
+        try {
+          const reference = athlete.$ref.replace(/^http:/, 'https:')
+          athlete = await fetchJson<EspnLeaderAthlete>(reference)
+        } catch (reason) {
+          errors.push(errorText(reason))
+        }
+      }
+      if (!athlete) return null
+      const id = athlete.id ?? athlete.$ref?.match(/\/athletes\/(\d+)/)?.[1] ?? `${key}-${index}`
+      const teamReference = entry.team?.$ref ?? athlete.team?.$ref ?? ''
+      const teamId = teamReference.match(/\/teams\/(\d+)/)?.[1]
+      const identity = teamId ? ESPN_TEAM_IDENTITIES[teamId] : undefined
+      const value = typeof entry.value === 'number' ? entry.value : Number(entry.displayValue)
+      if (!Number.isFinite(value)) return null
+      const mappedLeader: LeagueLeader = {
+        id,
+        name: athlete.displayName ?? athlete.fullName ?? `Player ${id}`,
+        team: entry.team?.abbreviation ?? athlete.team?.abbreviation ?? identity?.[0] ?? 'NBA',
+        teamName: entry.team?.displayName ?? athlete.team?.displayName ?? identity?.[1] ?? '',
+        headshot: athlete.headshot?.href ?? '',
+        value,
+        displayValue: entry.displayValue ?? value.toFixed(1),
+        category: key,
+      }
+      return mappedLeader
+    }))
+    return [key, leaders.filter((leader) => leader !== null)] as const
+  }))
+  return { leaders: Object.fromEntries(leaderGroups), error: [...new Set(errors)].join(' ') }
+}
+
+export async function loadLeagueLeaderCategory(key: LeagueLeader['category']): Promise<ApiResult<LeagueLeader[]>> {
+  const category = LEADER_CATEGORIES.find((item) => item.key === key)
+  const fallback = FALLBACK_INSIGHTS.leaders[key] ?? []
+  if (!category) return { data: fallback, error: `Unknown NBA leader category: ${key}` }
+  try {
+    const response = await fetchJson<unknown>(`${ESPN_CORE}/seasons/${SEASON_YEAR}/types/2/leaders?limit=10`)
+    const result = await mapLeagueLeaders(response, [category])
+    const leaders = result.leaders[key] ?? []
+    if (leaders.length) return { data: leaders, error: result.error }
+    return {
+      data: fallback,
+      error: result.error || 'ESPN returned no leaders for this category.',
+    }
+  } catch (reason) {
+    return { data: fallback, error: errorText(reason) }
+  }
+}
+
+type EspnBoxscoreAthlete = {
+  athlete?: {
+    id?: string
+    displayName?: string
+    fullName?: string
+    headshot?: string | { href?: string }
+  }
+  stats?: string[]
+}
+
+function recentScoreboardDates(dayCount = 2): string[] {
+  const today = nbaDate()
+  const [year, month, day] = today.split('-').map(Number)
+  return Array.from({ length: dayCount }, (_, offset) => {
+    const date = new Date(Date.UTC(year, month - 1, day - offset))
+    return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(date.getUTCDate()).padStart(2, '0')}`
+  })
+}
+
+async function mapGamePerformances(event: EspnEvent): Promise<OutlierPerformance[]> {
+  const live = eventStatus(event).type?.state === 'in'
+  const summary = await fetchJson<{ boxscore?: { players?: Array<{ team?: { abbreviation?: string }; statistics?: Array<{ labels?: string[]; athletes?: EspnBoxscoreAthlete[] }> }> } }>(
+    `${ESPN_SITE}/summary?event=${encodeURIComponent(event.id)}`,
+    live ? LIVE_CACHE_MS : SEASON_CACHE_MS,
+  )
+  const score = eventTeams(event)
+  const competitors = eventCompetition(event).competitors ?? []
+  const teams = summary.boxscore?.players ?? []
+  const performances: OutlierPerformance[] = []
+  for (const teamGroup of teams) {
+    const statistics = teamGroup.statistics?.[0]
+    if (!statistics) continue
+    const team = teamGroup.team?.abbreviation ?? ''
+    const opponent = competitors
+      .map((competitor) => competitor.team?.abbreviation ?? '')
+      .find((abbreviation) => abbreviation && abbreviation !== team) ?? 'NBA'
+    for (const athlete of statistics.athletes ?? []) {
+      const athleteId = athlete.athlete?.id ?? ''
+      const values = new Map((statistics.labels ?? []).map((label, index) => [label.toUpperCase(), parseStat(athlete.stats?.[index]) ?? 0]))
+      const points = values.get('PTS') ?? 0
+      const rebounds = values.get('REB') ?? 0
+      const assists = values.get('AST') ?? 0
+      const steals = values.get('STL') ?? 0
+      const blocks = values.get('BLK') ?? 0
+      const reasons = [
+        points >= 40 ? `${points} PTS • Elite scoring night` : '',
+        assists >= 15 ? `${assists} AST • Floor general alert` : '',
+        rebounds >= 18 ? `${rebounds} REB • Glass dominator` : '',
+        steals >= 5 ? `${steals} STL • Defensive disruption` : '',
+        blocks >= 5 ? `${blocks} BLK • Rim protection alert` : '',
+        [points, rebounds, assists, steals, blocks].filter((stat) => stat >= 10).length >= 3 ? 'Triple-double • All-around masterclass' : '',
+      ].filter(Boolean)
+      const headshot = athlete.athlete?.headshot
+      performances.push({
+        id: `${event.id}-${athleteId}`,
+        playerId: athleteId,
+        player: athlete.athlete?.displayName ?? athlete.athlete?.fullName ?? 'NBA Player',
+        team,
+        opponent,
+        date: eventDate(event),
+        points,
+        rebounds,
+        assists,
+        steals,
+        blocks,
+        headshot: typeof headshot === 'string' ? headshot : headshot?.href ?? '',
+        reason: reasons.join(' · '),
+        gameTitle: `${team} vs ${opponent} · ${score.status}`,
+      })
+    }
+  }
+  return performances
+}
+
+async function mapGameOutliers(event: EspnEvent): Promise<OutlierPerformance[]> {
+  return (await mapGamePerformances(event)).filter((performance) => performance.reason !== '')
+}
+
+export async function loadWeeklyTopPerformer(): Promise<ApiResult<OutlierPerformance | null>> {
+  const scoreboardResults = await Promise.allSettled(recentScoreboardDates(7).map((date) =>
+    fetchJson<unknown>(`${ESPN_SITE}/scoreboard?dates=${date}&limit=100`, date === nbaDate() ? LIVE_CACHE_MS : SEASON_CACHE_MS),
+  ))
+  const errors: string[] = []
+  const events = scoreboardResults.flatMap((result) => {
+    if (result.status === 'fulfilled') return eventList(result.value)
+    errors.push(errorText(result.reason))
+    return []
+  }).filter((event) => eventStatus(event).type?.state === 'post')
+  const gameResults = await Promise.allSettled(events.map(mapGamePerformances))
+  const performances = gameResults.flatMap((result) => {
+    if (result.status === 'fulfilled') return result.value
+    errors.push(errorText(result.reason))
+    return []
+  }).filter((performance) => performance.points > 0)
+  const top = performances.sort((left, right) => right.points - left.points)[0] ?? null
+  return { data: top, error: [...new Set(errors)].join(' ') }
+}
+
+export async function loadInsights(): Promise<ApiResult<InsightsPayload>> {
+  const scoreboardResults = await Promise.allSettled(recentScoreboardDates().map((date) =>
+      fetchJson<unknown>(`${ESPN_SITE}/scoreboard?dates=${date}&limit=100`, date === nbaDate() ? LIVE_CACHE_MS : SEASON_CACHE_MS),
+    ))
+  const errors: string[] = []
+  let anomalies = FALLBACK_INSIGHTS.anomalies
+  const availableScoreboards = scoreboardResults.flatMap((result) => {
+    if (result.status === 'fulfilled') return eventList(result.value)
+    errors.push(errorText(result.reason))
+    return []
+  })
+  if (availableScoreboards.length) {
+    const events = availableScoreboards
+      .filter((event) => ['in', 'post'].includes(eventStatus(event).type?.state ?? ''))
+      .sort((left, right) => Date.parse(eventDate(right)) - Date.parse(eventDate(left)))
+    const results = await Promise.allSettled(events.map(mapGameOutliers))
+    anomalies = results.flatMap((result) => {
+      if (result.status === 'fulfilled') return result.value
+      errors.push(errorText(result.reason))
+      return []
+    }).sort((left, right) => Date.parse(right.date) - Date.parse(left.date))
+  }
+  return {
+    data: { leaders: {}, anomalies, sample: false },
     error: [...new Set(errors)].join(' '),
   }
 }
