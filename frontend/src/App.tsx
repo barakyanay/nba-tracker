@@ -7,6 +7,7 @@ import {
   CircleHelp,
   Clock3,
   Flame,
+  Info,
   Radio,
   RefreshCw,
   Shield,
@@ -32,9 +33,15 @@ import {
   type TeamPayload,
 } from './data'
 import {
+  Area,
+  Bar,
+  ComposedChart,
   CartesianGrid,
-  Line,
-  LineChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -43,8 +50,9 @@ import {
 
 type View = 'spotlight' | 'team' | 'league'
 
-const YEAR = new Date().getFullYear()
-const SEASON_START = new Date().getMonth() >= 9 ? YEAR : YEAR - 1
+const YEAR = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()))
+const MONTH = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', month: 'numeric' }).format(new Date()))
+const SEASON_START = MONTH >= 10 ? YEAR : YEAR - 1
 const NBA_SEASON = `${SEASON_START}—${String(SEASON_START + 1).slice(-2)}`
 
 function useApi<T>(loader: () => Promise<ApiResult<T>>, fallback: T, enabled: boolean) {
@@ -167,9 +175,81 @@ function ScoreGameCard({ game }: { game: ScoreGame }) {
   )
 }
 
-function Spotlight({ player, live, playerError, liveError, playerLoading, liveLoading, reloadPlayer, reloadLive }: {
+function Countdown({ target }: { target: string }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const remaining = Math.max(0, Date.parse(target) - now)
+  const hours = Math.floor(remaining / 3_600_000)
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000)
+  const seconds = Math.floor((remaining % 60_000) / 1000)
+  return <strong className="ticker-countdown">{hours}h {String(minutes).padStart(2, '0')}m {String(seconds).padStart(2, '0')}s</strong>
+}
+
+function LiveTicker({ live, team, lastSync, loading, onRefresh, autoRefresh, onToggleAutoRefresh }: {
+  live: LivePayload | null
+  team: TeamPayload | null
+  lastSync: Date | null
+  loading: boolean
+  onRefresh: () => void
+  autoRefresh: boolean
+  onToggleAutoRefresh: () => void
+}) {
+  const nextGame = team?.upcoming.find((game) => Number.isFinite(Date.parse(String(game.TIP_TIMESTAMP))))
+  const nextTip = nextGame ? String(nextGame.TIP_TIMESTAMP) : null
+  return (
+    <aside className="ticker-bar">
+      <div className="ticker-main">
+        <div className="ticker-connection"><span className="live-dot" /> LIVE <b>•</b> ESPN NBA API</div>
+        <span className="ticker-sync">{lastSync ? `SYNC ${new Intl.DateTimeFormat('en-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jerusalem' }).format(lastSync)} IST` : 'WAITING FOR FIRST SYNC'}</span>
+        <button className="ticker-refresh" aria-label="Refresh NBA data" onClick={onRefresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''} /><span>REFRESH</span></button>
+        <label className="ticker-auto"><span>AUTO</span><button aria-label="Toggle automatic refresh" className={`toggle ${autoRefresh ? 'toggle-on' : ''}`} onClick={onToggleAutoRefresh}><i /></button></label>
+        <details className="ticker-info">
+          <summary aria-label="About live data"><Info size={15} /></summary>
+          <div className="ticker-popover">Live scores, schedules and player data are fetched directly in this browser from ESPN’s public NBA JSON endpoints. Availability and timing depend on ESPN.</div>
+        </details>
+      </div>
+      <div className="ticker-game">
+        {live?.isLive && live.game ? (
+          <>
+            <span className="live-now"><i /> PORTLAND LIVE</span>
+            <strong>{live.game.away.abbreviation} {live.game.away.score ?? 0} <b>—</b> {live.game.home.score ?? 0} {live.game.home.abbreviation}</strong>
+            <span>{live.game.period ? `Q${live.game.period}` : ''} {live.game.clock ?? live.game.status}</span>
+          </>
+        ) : nextTip && nextGame ? (
+          <>
+            <span className="ticker-next-label"><Clock3 size={13} /> NEXT TIP · ISRAEL TIME</span>
+            <strong>{String(nextGame.OPPONENT_NAME ?? 'PORTLAND')} <span>{nextGame.IS_HOME ? 'HOME' : 'AWAY'}</span></strong>
+            <Countdown target={nextTip} />
+          </>
+        ) : <span className="ticker-next-label"><CalendarDays size={13} /> NO UPCOMING TIP FOUND</span>}
+      </div>
+      <div className="ticker-refresh-note">{autoRefresh ? `AUTO ${live?.isLive ? '60S' : '5M'}` : 'AUTO OFF'}</div>
+    </aside>
+  )
+}
+
+function statNumber(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function IsraeliTime({ value, weekday = false }: { value: unknown; weekday?: boolean }) {
+  if (!value) return <>—</>
+  const date = new Date(String(value))
+  if (Number.isNaN(date.getTime())) return <>{String(value)}</>
+  return <>{new Intl.DateTimeFormat('en-IL', {
+    timeZone: 'Asia/Jerusalem',
+    ...(weekday ? { weekday: 'short' as const } : { month: 'short' as const, day: 'numeric' as const }),
+  }).format(date)}</>
+}
+
+function Spotlight({ player, live, team, playerError, liveError, playerLoading, liveLoading, reloadPlayer, reloadLive }: {
   player: PlayerPayload | null
   live: LivePayload | null
+  team: TeamPayload | null
   playerError: string
   liveError: string
   playerLoading: boolean
@@ -177,14 +257,10 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
   reloadPlayer: () => void
   reloadLive: () => void
 }) {
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [chartMode, setChartMode] = useState<'scoring' | 'efficiency'>('scoring')
-
-  useEffect(() => {
-    if (!autoRefresh) return
-    const timer = window.setInterval(() => void reloadLive(), 30_000)
-    return () => window.clearInterval(timer)
-  }, [autoRefresh, reloadLive])
+  const [chartMetric, setChartMetric] = useState<'points' | 'rebounds' | 'assists' | 'efficiency'>('points')
+  const [chartStyle, setChartStyle] = useState<'area' | 'bar'>('area')
+  const wins = player?.games.filter((game) => game.WL === 'W').length ?? 0
+  const losses = player?.games.filter((game) => game.WL === 'L').length ?? 0
 
   const averages = player?.averages ?? {}
   const stats = [
@@ -198,6 +274,8 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
     { label: 'FT%', value: pct(averages.FT_PCT), icon: Activity },
     { label: 'MINUTES', value: number(averages.MIN), icon: Clock3 },
     { label: '+ / −', value: number(averages.PLUS_MINUS), icon: ArrowUpRight },
+    { label: 'TRUE SHOOTING', value: pct(averages.TS_PCT), icon: Activity },
+    { label: 'AST / TO', value: number(averages.AST_TO), icon: ArrowUpRight },
   ]
 
   return (
@@ -228,7 +306,6 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
         <div className="live-panel-heading">
           <div className="live-title"><span className="live-icon"><Radio size={17} /></span><div><p className="eyebrow">On the floor</p><h2>Live game tracker</h2></div></div>
           <div className="live-controls">
-            <label className="toggle-wrap"><span>Auto-refresh</span><button aria-label="Toggle automatic live stat refresh" className={`toggle ${autoRefresh ? 'toggle-on' : ''}`} onClick={() => setAutoRefresh((value) => !value)}><i /></button></label>
             <button className="icon-button" aria-label="Refresh live stats" onClick={() => void reloadLive()}><RefreshCw size={15} className={liveLoading ? 'spin' : ''} /></button>
           </div>
         </div>
@@ -256,31 +333,33 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
         ) : (
           <div className="offday"><div className="offday-icon"><CalendarDays size={18} /></div><div><strong>{live?.game?.statusCode === 3 ? 'Portland’s game is final' : live?.game ? 'Tip-off is coming' : 'No game on the schedule today'}</strong><p>{live?.message ?? 'Deni’s live box score will appear here when Portland takes the court.'}</p></div><span className="offday-date">{dateLabel(new Date(), { weekday: 'short', month: 'short', day: 'numeric' })}</span></div>
         )}
-        <div className="live-foot">        <span><span className="stat-dot" /> DATA FROM ESPN</span><span>REFRESHES EVERY 30 SEC</span></div>
+        <div className="live-foot"><span><span className="stat-dot" /> DATA FROM ESPN</span><span>AUTO 60 SEC LIVE · 5 MIN OTHERWISE</span></div>
       </section>
 
       <div className="content-grid charts-grid">
         <section className="surface chart-card">
-          <div className="chart-heading"><div><p className="eyebrow">Game by game</p><h2>Performance trend</h2></div><div className="segmented"><button className={chartMode === 'scoring' ? 'selected' : ''} onClick={() => setChartMode('scoring')}>Scoring</button><button className={chartMode === 'efficiency' ? 'selected' : ''} onClick={() => setChartMode('efficiency')}>Efficiency</button></div></div>
+          <div className="chart-heading"><div><p className="eyebrow">Last {player?.games.length ?? 15} games</p><h2>Performance trend</h2></div><div className="segmented"><button className={chartStyle === 'area' ? 'selected' : ''} onClick={() => setChartStyle('area')}>Area</button><button className={chartStyle === 'bar' ? 'selected' : ''} onClick={() => setChartStyle('bar')}>Bars</button></div></div>
+          <div className="chart-options">
+            {([['points', 'POINTS'], ['rebounds', 'REBOUNDS'], ['assists', 'ASSISTS'], ['efficiency', 'FG% / 3P%']] as const).map(([metric, label]) => <button key={metric} className={chartMetric === metric ? 'metric-selected' : ''} onClick={() => setChartMetric(metric)}>{label}</button>)}
+          </div>
           {player?.trend.length ? <div className="chart-wrap">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={player.trend} margin={{ top: 14, right: 12, left: -18, bottom: 0 }}>
+              <ComposedChart data={player.trend} margin={{ top: 14, right: 12, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="#282b31" vertical={false} />
                 <XAxis dataKey="game" tickLine={false} axisLine={false} tick={{ fill: '#777c86', fontSize: 10 }} tickFormatter={(value) => `G${value}`} minTickGap={20} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fill: '#777c86', fontSize: 10 }} />
                 <Tooltip contentStyle={{ background: '#17191f', border: '1px solid #30333b', borderRadius: 8, color: '#f5f5f5' }} labelFormatter={(value, items) => items[0]?.payload?.date ?? `Game ${value}`} />
-                {chartMode === 'scoring' ? <>
-                  <Line type="monotone" dataKey="points" name="Points" stroke="#e03a3e" strokeWidth={2.5} dot={{ r: 2, fill: '#e03a3e', strokeWidth: 0 }} activeDot={{ r: 5 }} />
-                  <Line type="monotone" dataKey="rebounds" name="Rebounds" stroke="#d7a358" strokeWidth={1.8} dot={false} />
-                  <Line type="monotone" dataKey="assists" name="Assists" stroke="#7f95c6" strokeWidth={1.8} dot={false} />
-                </> : <>
-                  <Line type="monotone" dataKey="fgPct" name="FG%" stroke="#e03a3e" strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="threePct" name="3P%" stroke="#d7a358" strokeWidth={1.8} dot={false} />
-                </>}
-              </LineChart>
+                {chartMetric === 'efficiency' ? <>
+                  {chartStyle === 'area' ? <Area type="monotone" dataKey="fgPct" name="FG%" stroke="#e03a3e" fill="#e03a3e" fillOpacity={0.12} /> : <Bar dataKey="fgPct" name="FG%" fill="#e03a3e" radius={[3, 3, 0, 0]} />}
+                  {chartStyle === 'area' ? <Area type="monotone" dataKey="threePct" name="3P%" stroke="#d7a358" fill="#d7a358" fillOpacity={0.08} /> : <Bar dataKey="threePct" name="3P%" fill="#d7a358" radius={[3, 3, 0, 0]} />}
+                </> : chartStyle === 'area'
+                  ? <Area type="monotone" dataKey={chartMetric} name={chartMetric} stroke="#e03a3e" fill="#e03a3e" fillOpacity={0.16} strokeWidth={2.4} activeDot={{ r: 5 }} />
+                  : <Bar dataKey={chartMetric} name={chartMetric} fill="#e03a3e" radius={[3, 3, 0, 0]} />}
+              </ComposedChart>
             </ResponsiveContainer>
           </div> : <div className="chart-empty">{playerLoading ? 'Loading the season game log…' : playerError ? 'Season trend is unavailable while ESPN data is offline.' : 'Season trend will appear when games are available.'}</div>}
-          <div className="chart-legend"><span><i className="legend-red" />{chartMode === 'scoring' ? 'POINTS' : 'FG%'}</span><span><i className="legend-gold" />{chartMode === 'scoring' ? 'REBOUNDS' : '3P%'}</span>{chartMode === 'scoring' && <span><i className="legend-blue" />ASSISTS</span>}</div>
+          <div className="chart-legend"><span><i className="legend-red" />{chartMetric === 'efficiency' ? 'FG%' : chartMetric.toUpperCase()}</span>{chartMetric === 'efficiency' && <span><i className="legend-gold" />3P%</span>}</div>
+          <div className="split-summary"><span><b className="positive">{wins} W</b><small>LAST 15</small></span><i /><span><b className="negative">{losses} L</b><small>RESULTS SPLIT</small></span><i /><span><b>{player?.games.length ?? 0}</b><small>GAMES LOGGED</small></span></div>
         </section>
         <section className="surface efficiency-card">
           <p className="eyebrow">Efficiency snapshot</p><h2>Shot profile</h2>
@@ -289,8 +368,9 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
         </section>
       </div>
 
+      <PlayerComparison roster={team?.roster ?? []} playerStats={averages} loading={team?.roster.length === 0} />
       <section className="surface table-section">
-        <SectionTitle kicker="The last 10" title="Game log" action={<span className="muted-label">{player?.season?.replace('-', '—') ?? NBA_SEASON} REGULAR SEASON</span>} />
+        <SectionTitle kicker="The last 15" title="Game log" action={<span className="muted-label">{player?.season?.replace('-', '—') ?? NBA_SEASON} REGULAR SEASON</span>} />
         {playerError ? <LoadError loading={playerLoading} error={playerError} onRetry={reloadPlayer} /> : playerLoading && !player ? <div className="loading-line" /> : (
           <div className="table-scroll"><table><thead><tr><th>DATE</th><th>MATCHUP</th><th>RESULT</th><th>MIN</th><th>PTS</th><th>REB</th><th>OREB</th><th>DREB</th><th>AST</th><th>STL</th><th>BLK</th><th>FG</th><th>3PT</th><th>FT</th><th>TO</th><th>PF</th><th>+/-</th></tr></thead><tbody>
             {(player?.games ?? []).map((game, index) => <tr key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><td>{dateLabel(game.GAME_DATE)}</td><td className="matchup-cell">{game.MATCHUP ?? '—'}</td><td><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></td><td>{number(game.MIN)}</td><td className="strong-cell">{number(game.PTS, 0)}</td><td>{number(game.REB, 0)}</td><td>{number(game.OREB, 0)}</td><td>{number(game.DREB, 0)}</td><td>{number(game.AST, 0)}</td><td>{number(game.STL, 0)}</td><td>{number(game.BLK, 0)}</td><td>{game.FGM ?? '—'}-{game.FGA ?? '—'}</td><td>{game.FG3M ?? '—'}-{game.FG3A ?? '—'}</td><td>{game.FTM ?? '—'}-{game.FTA ?? '—'}</td><td>{number(game.TOV, 0)}</td><td>{number(game.PF, 0)}</td><td className={Number(game.PLUS_MINUS) >= 0 ? 'positive' : 'negative'}>{number(game.PLUS_MINUS, 0)}</td></tr>)}
@@ -299,6 +379,56 @@ function Spotlight({ player, live, playerError, liveError, playerLoading, liveLo
         )}
       </section>
     </>
+  )
+}
+
+function PlayerComparison({ roster, playerStats, loading }: { roster: Row[]; playerStats: Row; loading: boolean }) {
+  const teammates = roster.filter((player) => String(player.PLAYER_ID) !== '4683021')
+  const [selectedId, setSelectedId] = useState('')
+  const deni = roster.find((player) => String(player.PLAYER_ID) === '4683021') ?? { PLAYER: 'Deni Avdija', ...playerStats }
+  const comparison = teammates.find((player) => String(player.PLAYER_ID) === selectedId) ?? teammates[0]
+  useEffect(() => {
+    if (comparison && String(comparison.PLAYER_ID) !== selectedId) setSelectedId(String(comparison.PLAYER_ID))
+  }, [comparison, selectedId])
+
+  const metrics = [
+    { key: 'PTS', label: 'POINTS', cap: 40 },
+    { key: 'REB', label: 'REBOUNDS', cap: 15 },
+    { key: 'AST', label: 'ASSISTS', cap: 15 },
+    { key: 'STL', label: 'STEALS', cap: 3 },
+    { key: 'BLK', label: 'BLOCKS', cap: 3 },
+    { key: 'FG_PCT', label: 'FG%', cap: 0.7 },
+  ]
+  const radarData = metrics.map((metric) => ({
+    metric: metric.label,
+    Deni: Math.min(100, (statNumber(deni?.[metric.key]) / metric.cap) * 100),
+    teammate: Math.min(100, (statNumber(comparison?.[metric.key]) / metric.cap) * 100),
+  }))
+
+  return (
+    <section className="surface comparison-card">
+      <div className="section-title"><div><p className="eyebrow">Blazers, side by side</p><h2>Player comparison</h2></div>
+        <label className="comparison-select"><span>COMPARE DENI WITH</span><select value={comparison ? String(comparison.PLAYER_ID) : ''} onChange={(event) => setSelectedId(event.target.value)} disabled={!teammates.length}><option value="">Select a teammate</option>{teammates.map((player) => <option key={String(player.PLAYER_ID)} value={String(player.PLAYER_ID)}>{String(player.PLAYER)}</option>)}</select></label>
+      </div>
+      {loading && !roster.length ? <div className="quiet-empty">Loading Portland player stats…</div> : !comparison ? <div className="quiet-empty">Teammate comparisons are unavailable right now.</div> : (
+        <div className="comparison-layout">
+          <div className="comparison-players">
+            {[{ name: 'Deni Avdija', color: 'var(--red)', stats: deni }, { name: String(comparison.PLAYER), color: '#80a6d9', stats: comparison }].map((player) => (
+              <div className="compare-player" key={player.name}>
+                <div className="compare-player-title"><span className="compare-dot" style={{ background: player.color }} /><strong>{player.name}</strong><small>PER GAME</small></div>
+                {metrics.map((metric) => {
+                  const raw = player.stats?.[metric.key]
+                  const value = metric.key === 'FG_PCT' ? pct(raw) : number(raw)
+                  const width = Math.min(100, (statNumber(raw) / metric.cap) * 100)
+                  return <div className="compare-stat" key={metric.key}><span>{metric.label}</span><div className="compare-track"><i style={{ width: `${width}%`, background: player.color }} /></div><b>{value}</b></div>
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="comparison-radar"><ResponsiveContainer width="100%" height="100%"><RadarChart data={radarData} outerRadius="72%"><PolarGrid stroke="#30343d" /><PolarAngleAxis dataKey="metric" tick={{ fill: '#aeb2bb', fontSize: 9 }} /><PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} /><Radar name="Deni" dataKey="Deni" stroke="#e03a3e" fill="#e03a3e" fillOpacity={0.28} /><Radar name={String(comparison.PLAYER)} dataKey="teammate" stroke="#80a6d9" fill="#80a6d9" fillOpacity={0.16} /></RadarChart></ResponsiveContainer><div className="radar-legend"><span><i className="legend-red" />DENI</span><span><i className="legend-blue" />{String(comparison.PLAYER).toUpperCase()}</span></div></div>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -320,13 +450,13 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
       <div className="content-grid schedule-grid">
         <section className="surface schedule-card"><div className="section-title"><div><p className="eyebrow">What’s next</p><h2>Upcoming schedule</h2></div><CalendarDays size={17} className="title-icon" /></div>
           {data?.upcoming.length ? <div className="schedule-list">{data.upcoming.map((game, index) => {
-            const home = String(game.HOME_TEAM_ID) === '1610612757'
+            const home = String(game.HOME_TEAM_ID) === '22'
             const opponent = home ? game.VISITOR_TEAM_NAME : game.HOME_TEAM_NAME
-            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b>{dateLabel(game.GAME_DATE, { month: 'short', day: 'numeric' })}</b><span>{dateLabel(game.GAME_DATE, { weekday: 'short' })}</span></div><div className="schedule-opponent"><div className="team-mark">{String(opponent ?? 'NBA').slice(0, 3).toUpperCase()}</div><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> {String(game.GAME_STATUS_TEXT ?? 'UPCOMING')}</span></div></div><span className="schedule-time">{game.GAME_STATUS_TEXT ? String(game.GAME_STATUS_TEXT) : 'TBD'}</span><ChevronRight size={15} className="row-chevron" /></div>
+            return <div className="schedule-row" key={String(game.GAME_ID ?? index)}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><div className="team-mark">{game.OPPONENT_LOGO ? <img src={String(game.OPPONENT_LOGO)} alt="" /> : String(opponent ?? 'NBA').slice(0, 3).toUpperCase()}</div><div><b>{String(opponent ?? 'Opponent')}</b><span>{home ? 'HOME' : 'AWAY'} <i /> ISRAEL TIME</span></div></div><span className="schedule-time">{String(game.GAME_STATUS_TEXT ?? 'TBD')}</span>{game.IS_ISRAEL_FRIENDLY === true && <span className="israel-friendly">ISRAEL PRIME</span>}<ChevronRight size={15} className="row-chevron" /></div>
           })}</div> : <div className="quiet-empty">{loading ? 'Loading schedule…' : 'Upcoming games will appear here when the season schedule is available.'}</div>}
         </section>
         <section className="surface schedule-card recent-card"><div className="section-title"><div><p className="eyebrow">Last five</p><h2>Recent results</h2></div><Activity size={17} className="title-icon" /></div>
-          {data?.recent.length ?           <div className="schedule-list">{data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b>{dateLabel(game.GAME_DATE, { month: 'short', day: 'numeric' })}</b><span>{dateLabel(game.GAME_DATE, { weekday: 'short' })}</span></div><div className="schedule-opponent"><div className={`team-mark ${game.WL === 'W' ? 'team-mark-red' : ''}`}>{(game.MATCHUP ?? 'NBA').split(' ').pop()?.replace(/[^A-Z]/g, '').slice(0, 3)}</div><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'}–{game.OPPONENT_PTS ?? '—'}</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
+          {data?.recent.length ? <div className="schedule-list">{data.recent.map((game, index) => <div className="schedule-row recent-row" key={`${game.GAME_ID ?? game.GAME_DATE}-${index}`}><div className="schedule-date"><b><IsraeliTime value={game.GAME_DATE} /></b><span><IsraeliTime value={game.GAME_DATE} weekday /></span></div><div className="schedule-opponent"><div className={`team-mark ${game.WL === 'W' ? 'team-mark-red' : ''}`}>{(game.MATCHUP ?? 'NBA').split(' ').pop()?.replace(/[^A-Z]/g, '').slice(0, 3)}</div><div><b>{game.MATCHUP ?? '—'}</b><span>FINAL <i /> {game.PTS ?? '—'}–{game.OPPONENT_PTS ?? '—'}</span></div></div><span className={`result-pill ${game.WL === 'W' ? 'win' : 'loss'}`}>{game.WL ?? '—'}</span></div>)}</div> : <div className="quiet-empty">{loading ? 'Loading recent results…' : 'No completed games yet this season.'}</div>}
         </section>
       </div>
       <section className="surface table-section roster-section"><SectionTitle kicker="Built for the grind" title="The roster" action={<span className="muted-label">{data?.roster.length ?? '—'} PLAYERS <Users size={14} /></span>} />
@@ -341,9 +471,77 @@ function TeamHub({ data, loading, error, reload }: { data: TeamPayload | null; l
 function StandingsTable({ rows, conference }: { rows: Row[]; conference: string }) {
   const filtered = rows.filter((team) => String(team.Conference ?? '').toLowerCase().includes(conference.toLowerCase()))
   return <div className="table-scroll standings-scroll"><table><thead><tr><th>#</th><th>TEAM</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>STREAK</th></tr></thead><tbody>
-    {filtered.map((team, index) => <tr className={String(team.TeamID) === '1610612757' ? 'highlight-row' : ''} key={String(team.TeamID ?? index)}><td>{String(team.PlayoffRank ?? index + 1)}</td><td className="standings-name">{team.TeamCity ? `${String(team.TeamCity)} ${String(team.TeamName ?? '')}` : String(team.TeamName ?? team.Team ?? '—')}{String(team.TeamID) === '1610612757' && <span className="you-tag">POR</span>}</td><td>{String(team.WINS ?? '—')}</td><td>{String(team.LOSSES ?? '—')}</td><td>{pct(team.WinPCT)}</td><td>{String(team.ConferenceGamesBack ?? '—')}</td><td>{String(team.strCurrentStreak ?? team.CurrentStreak ?? '—')}</td></tr>)}
+    {filtered.map((team, index) => {
+      const seed = Number(team.PlayoffRank ?? index + 1)
+      const zone = seed <= 6 ? 'playoff-zone' : seed <= 10 ? 'playin-zone' : ''
+      return <tr className={`${zone} ${String(team.TeamID) === '22' ? 'highlight-row' : ''}`} key={String(team.TeamID ?? index)}><td><span className={`seed-chip ${zone}`}>{seed}</span></td><td className="standings-name">{team.TeamCity ? `${String(team.TeamCity)} ${String(team.TeamName ?? '')}` : String(team.TeamName ?? team.Team ?? '—')}{String(team.TeamID) === '22' && <span className="you-tag">POR</span>}</td><td>{String(team.WINS ?? '—')}</td><td>{String(team.LOSSES ?? '—')}</td><td>{pct(team.WinPCT)}</td><td>{String(team.ConferenceGamesBack ?? '—')}</td><td>{String(team.strCurrentStreak ?? team.CurrentStreak ?? '—')}</td></tr>
+    })}
     {!filtered.length && <tr><td colSpan={7} className="empty-cell">Standings are not available.</td></tr>}
   </tbody></table></div>
+}
+
+function logistic(value: number): number {
+  return 1 / (1 + Math.exp(-value))
+}
+
+function PlayoffSimulator({ rows }: { rows: Row[] }) {
+  const [nextWins, setNextWins] = useState(5)
+  const west = rows.filter((team) => String(team.Conference ?? '').toLowerCase().includes('west'))
+  const portland = west.find((team) => String(team.TeamID) === '22')
+  const complete = portland && typeof portland.WINS === 'number' && typeof portland.LOSSES === 'number'
+  const wins = complete ? Number(portland.WINS) : 0
+  const losses = complete ? Number(portland.LOSSES) : 0
+  const gamesPlayed = complete ? Number(portland.GAMES_PLAYED ?? wins + losses) : 0
+  const remaining = complete ? Number(portland.REMAINING ?? Math.max(0, 82 - gamesPlayed)) : 0
+  const simulatedGames = Math.min(10, remaining)
+  const currentRate = gamesPlayed ? wins / gamesPlayed : 0
+  const projectedWins = complete
+    ? wins + Math.min(nextWins, simulatedGames) + Math.max(0, remaining - simulatedGames) * currentRate
+    : 0
+  const projectedLosses = complete ? 82 - projectedWins : 0
+  const projectedRate = complete ? projectedWins / Math.max(1, 82) : 0
+  const projectedOrder = west.map((team) => ({
+    id: String(team.TeamID),
+    rate: String(team.TeamID) === '22'
+      ? projectedRate
+      : Number(team.WinPCT ?? 0),
+  })).sort((left, right) => right.rate - left.rate)
+  const projectedSeed = complete ? projectedOrder.findIndex((team) => team.id === '22') + 1 : 0
+  const sixth = Number(west.find((team) => Number(team.PlayoffRank) === 6)?.WinPCT)
+  const tenth = Number(west.find((team) => Number(team.PlayoffRank) === 10)?.WinPCT)
+  const sigma = Math.max(0.045, Math.sqrt(Math.max(1, remaining)) * 0.008)
+  const directOdds = complete && Number.isFinite(sixth) ? logistic((projectedRate - sixth) / sigma) : null
+  const playinTotal = complete && Number.isFinite(tenth) ? logistic((projectedRate - tenth) / sigma) : null
+  const playinOdds = directOdds !== null && playinTotal !== null ? Math.max(0, playinTotal - directOdds) : null
+  const gamesBack = (seed: number) => {
+    const target = west.find((team) => Number(team.PlayoffRank) === seed)
+    if (!target || !portland) return '—'
+    const targetWins = Number(target.WINS ?? 0)
+    const targetLosses = Number(target.LOSSES ?? 0)
+    return Math.max(0, ((targetWins - wins) + (losses - targetLosses)) / 2).toFixed(1)
+  }
+  const percent = (probability: number | null) => probability === null ? '—' : `${Math.round(probability * 100)}%`
+
+  return (
+    <section className="surface simulator-card">
+      <div className="section-title"><div><p className="eyebrow">Run the table</p><h2>Playoff & play-in simulator</h2></div><span className="simulator-live"><i /> WHAT-IF MODEL</span></div>
+      <p className="simulator-intro">A simple projection from current West records, games back and the remaining schedule. Simulate Portland’s next 10.</p>
+      <div className="simulator-odds">
+        <div><span>DIRECT PLAYOFF</span><strong>{percent(directOdds)}</strong><small>TOP 6 SEEDS</small></div>
+        <div><span>PLAY-IN CHANCE</span><strong>{percent(playinOdds)}</strong><small>SEEDS 7–10</small></div>
+        <div><span>GAMES BACK · #6 / #10</span><strong>{gamesBack(6)} <i>/</i> {gamesBack(10)}</strong><small>{remaining || '—'} GAMES REMAINING</small></div>
+      </div>
+      <label className="sim-slider-label"><span>SIMULATE NEXT {simulatedGames} GAMES</span><strong>{nextWins} WINS <i>—</i> {simulatedGames - nextWins} LOSSES</strong></label>
+      <input className="sim-slider" type="range" min="0" max={simulatedGames} value={Math.min(nextWins, simulatedGames)} onChange={(event) => setNextWins(Number(event.target.value))} disabled={!complete || simulatedGames === 0} />
+      <div className="slider-ends"><span>0 WINS</span><span>{simulatedGames} WINS</span></div>
+      <div className="projection-result">
+        <div><span>PROJECTED FINAL RECORD</span><strong>{complete ? `${projectedWins.toFixed(0)}–${projectedLosses.toFixed(0)}` : 'Unavailable'}</strong></div>
+        <div><span>PROJECTED WEST SEED</span><strong>{projectedSeed ? `#${projectedSeed}` : '—'}</strong></div>
+        <p>{complete ? projectedSeed <= 6 ? 'Direct playoff spot in this scenario.' : projectedSeed <= 10 ? 'Play-in position in this scenario.' : 'Outside the current projected top 10.' : 'Standings data is unavailable; projections will return when ESPN responds.'}</p>
+      </div>
+      <small className="model-disclaimer">Illustrative estimate, not a betting or official NBA forecast. Remaining teams are projected at their current win rate.</small>
+    </section>
+  )
 }
 
 function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | null; loading: boolean; error: string; reload: () => void }) {
@@ -361,16 +559,37 @@ function LeagueHub({ data, loading, error, reload }: { data: LeaguePayload | nul
         {data && <StandingsTable rows={conference === 'West' ? west : east} conference={conference} />}
         {!data && !error && <div className="quiet-empty">Conference standings load with today’s scoreboard.</div>}
       </section>
+      <PlayoffSimulator rows={data?.standings ?? []} />
     </>
   )
 }
 
 export default function App() {
   const [view, setView] = useState<View>('spotlight')
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [lastSync, setLastSync] = useState<Date | null>(null)
   const player = useApi(loadPlayerData, FALLBACK_PLAYER, view === 'spotlight')
-  const live = useApi(loadLiveData, FALLBACK_LIVE, view === 'spotlight')
-  const team = useApi(loadTeamData, FALLBACK_TEAM, view === 'team')
+  const live = useApi(loadLiveData, FALLBACK_LIVE, true)
+  const team = useApi(loadTeamData, FALLBACK_TEAM, true)
   const league = useApi(loadLeagueData, FALLBACK_LEAGUE, view === 'league')
+  const refreshAll = useCallback(async () => {
+    const active = [live.reload(), team.reload()]
+    if (player.data || view === 'spotlight') active.push(player.reload())
+    if (league.data || view === 'league') active.push(league.reload())
+    await Promise.allSettled(active)
+    setLastSync(new Date())
+  }, [league.data, league.reload, live.reload, player.data, player.reload, team.reload, view])
+
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = live.data?.isLive ? 60_000 : 5 * 60_000
+    const timer = window.setInterval(() => void refreshAll(), interval)
+    return () => window.clearInterval(timer)
+  }, [autoRefresh, live.data?.isLive, refreshAll])
+
+  useEffect(() => {
+    if (!live.loading && !team.loading && live.data && team.data) setLastSync(new Date())
+  }, [live.data, live.loading, team.data, team.loading])
   const nav: { id: View; label: string }[] = [
     { id: 'spotlight', label: 'Deni spotlight' },
     { id: 'team', label: 'Trail Blazers' },
@@ -385,8 +604,17 @@ export default function App() {
         <nav className="main-nav" aria-label="Main navigation">{nav.map((item) => <button key={item.id} className={view === item.id ? 'nav-active' : ''} onClick={() => setView(item.id)}>{item.label}</button>)}</nav>
         <div className="header-status"><span className="live-dot" /> ESPN DATA <span className="header-season">{NBA_SEASON.slice(-2)}</span></div>
       </header>
+      <LiveTicker
+        live={live.data}
+        team={team.data}
+        lastSync={lastSync}
+        loading={live.loading || team.loading || (view === 'spotlight' && player.loading)}
+        onRefresh={() => void refreshAll()}
+        autoRefresh={autoRefresh}
+        onToggleAutoRefresh={() => setAutoRefresh((enabled) => !enabled)}
+      />
       <main className="main-content">
-        {view === 'spotlight' && <Spotlight player={player.data} live={live.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} />}
+        {view === 'spotlight' && <Spotlight player={player.data} live={live.data} team={team.data} playerError={player.error} liveError={live.error} playerLoading={player.loading} liveLoading={live.loading} reloadPlayer={player.reload} reloadLive={live.reload} />}
         {view === 'team' && <TeamHub data={team.data} loading={team.loading} error={team.error} reload={team.reload} />}
         {view === 'league' && <LeagueHub data={league.data} loading={league.loading} error={league.error} reload={league.reload} />}
         <footer className="site-footer"><a className="brand brand-small" href="#" onClick={(event) => { event.preventDefault(); setView('spotlight') }}><span className="brand-mark"><span /></span><span className="brand-name">RIP CITY<span>TRACKER</span></span></a><span>BUILT FOR THE LOVE OF THE GAME <i /> UNOFFICIAL FAN PROJECT</span><span>DATA FROM ESPN</span></footer>

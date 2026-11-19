@@ -8,6 +8,8 @@ export type GameRow = Row & {
   MIN?: string | number
   PTS?: number
   OPPONENT_PTS?: number
+  AST_TO?: number
+  TS_PCT?: number
   REB?: number
   OREB?: number
   DREB?: number
@@ -29,8 +31,10 @@ export type ScoreGame = {
   id: string
   status: string
   statusCode: number
-  home: { id: string; name: string; abbreviation: string; score: number | null }
-  away: { id: string; name: string; abbreviation: string; score: number | null }
+  home: { id: string; name: string; abbreviation: string; score: number | null; logo?: string }
+  away: { id: string; name: string; abbreviation: string; score: number | null; logo?: string }
+  period?: number
+  clock?: string
 }
 
 export type PlayerPayload = {
@@ -101,7 +105,7 @@ type EspnEvent = {
 type EspnCompetitor = {
   id?: string
   homeAway?: string
-  score?: string | number
+  score?: string | number | { value?: number; displayValue?: string }
   winner?: boolean
   team?: {
     id?: string
@@ -109,6 +113,7 @@ type EspnCompetitor = {
     name?: string
     displayName?: string
     abbreviation?: string
+    logos?: Array<{ href?: string }>
   }
 }
 
@@ -164,7 +169,20 @@ export const FALLBACK_LIVE: LivePayload = {
 export const FALLBACK_TEAM: TeamPayload = {
   season: SEASON,
   record: { conference: 'Western Conference' },
-  roster: [],
+  roster: ['Deni Avdija', 'Shaedon Sharpe', 'Anfernee Simons', 'Scoot Henderson', 'Toumani Camara', 'Donovan Clingan']
+    .map((PLAYER, index) => ({
+      PLAYER_ID: `sample-${index}`,
+      PLAYER,
+      POSITION: '—',
+      HEIGHT: '—',
+      WEIGHT: '—',
+      EXP: '—',
+      PTS: null,
+      REB: null,
+      AST: null,
+      MIN: null,
+      SAMPLE: true,
+    })),
   recent: [],
   upcoming: [],
 }
@@ -172,7 +190,27 @@ export const FALLBACK_TEAM: TeamPayload = {
 export const FALLBACK_LEAGUE: LeaguePayload = {
   date: nbaDate(),
   games: [],
-  standings: [],
+  standings: [
+    ['Oklahoma City', 'Thunder'], ['Houston', 'Rockets'], ['Denver', 'Nuggets'],
+    ['Golden State', 'Warriors'], ['LA', 'Clippers'], ['Portland', 'Trail Blazers'],
+    ['Minnesota', 'Timberwolves'], ['Phoenix', 'Suns'], ['Sacramento', 'Kings'],
+    ['Dallas', 'Mavericks'], ['Memphis', 'Grizzlies'], ['New Orleans', 'Pelicans'],
+    ['San Antonio', 'Spurs'], ['Utah', 'Jazz'], ['Los Angeles', 'Lakers'],
+  ].map(([TeamCity, TeamName], index) => ({
+    TeamID: TeamCity === 'Portland' ? PORTLAND_ID : `sample-west-${index}`,
+    TeamCity,
+    TeamName,
+    Conference: 'West',
+    PlayoffRank: index + 1,
+    WINS: null,
+    LOSSES: null,
+    WinPCT: null,
+    ConferenceGamesBack: null,
+    GAMES_PLAYED: null,
+    REMAINING: null,
+    strCurrentStreak: '—',
+    SAMPLE: true,
+  })),
 }
 
 function getSeasonYear(): number {
@@ -268,8 +306,16 @@ type EspnSeasonStats = {
 function mapSeasonStats(response: EspnSeasonStats): Row {
   const values = statValues(response.splits?.categories)
   const gamesPlayed = values.get('gamesPlayed') ?? 0
+  const points = values.get('avgPoints') ?? null
+  const fieldGoalAttempts = values.get('avgFieldGoalsAttempted') ?? null
+  const freeThrowAttempts = values.get('avgFreeThrowsAttempted') ?? null
+  const assists = values.get('avgAssists') ?? null
+  const turnovers = values.get('avgTurnovers') ?? null
+  const trueShootingAttempts = fieldGoalAttempts === null || freeThrowAttempts === null
+    ? null
+    : fieldGoalAttempts + 0.44 * freeThrowAttempts
   return {
-    PTS: values.get('avgPoints') ?? null,
+    PTS: points,
     REB: values.get('avgRebounds') ?? null,
     AST: values.get('avgAssists') ?? null,
     STL: values.get('avgSteals') ?? null,
@@ -279,6 +325,10 @@ function mapSeasonStats(response: EspnSeasonStats): Row {
     FT_PCT: values.has('freeThrowPct') ? (values.get('freeThrowPct') ?? 0) / 100 : null,
     MIN: values.get('avgMinutes') ?? null,
     PLUS_MINUS: gamesPlayed ? (values.get('plusMinus') ?? 0) / gamesPlayed : null,
+    TS_PCT: trueShootingAttempts && points !== null ? points / (2 * trueShootingAttempts) : null,
+    AST_TO: turnovers ? (assists ?? 0) / turnovers : null,
+    FGA: fieldGoalAttempts,
+    FTA: freeThrowAttempts,
   }
 }
 
@@ -324,11 +374,13 @@ function eventTeams(event: EspnEvent): ScoreGame {
 function mapCompetitor(competitor: EspnCompetitor | undefined, statusCode: number): ScoreGame['home'] {
   const team = competitor?.team
   const score = competitor?.score
+  const scoreValue = typeof score === 'object' && score !== null ? score.value : score
   return {
     id: String(competitor?.id ?? team?.id ?? ''),
     name: team?.displayName ?? [team?.location, team?.name].filter(Boolean).join(' '),
     abbreviation: team?.abbreviation ?? '',
-    score: statusCode === 1 || score === undefined || score === null || score === '' ? null : Number(score),
+    score: statusCode === 1 || scoreValue === undefined || scoreValue === null || scoreValue === '' ? null : Number(scoreValue),
+    logo: competitor?.team?.logos?.[0]?.href ?? '',
   }
 }
 
@@ -438,7 +490,7 @@ export async function loadPlayerData(): Promise<ApiResult<PlayerPayload>> {
     const completed = teamEvents(scheduleResult.value)
       .filter((event) => eventStatus(event).type?.completed)
       .sort((left, right) => Date.parse(eventDate(right)) - Date.parse(eventDate(left)))
-      .slice(0, 10)
+      .slice(0, 15)
     const results = await Promise.allSettled(completed.map(playerGame))
     games = results.flatMap((result) => {
       if (result.status === 'fulfilled') return [result.value]
@@ -559,6 +611,8 @@ function mapStandings(response: StandingsResponse): Row[] {
           LOSSES: stats.get('losses'),
           WinPCT: stats.get('leagueWinPercent'),
           ConferenceGamesBack: stats.get('gamesBehind'),
+          GAMES_PLAYED: stats.get('gamesPlayed') ?? ((stats.get('wins') ?? 0) + (stats.get('losses') ?? 0)),
+          REMAINING: Math.max(0, 82 - (stats.get('gamesPlayed') ?? ((stats.get('wins') ?? 0) + (stats.get('losses') ?? 0)))),
           strCurrentStreak: typeof streak === 'number' && streak !== 0
             ? `${streak > 0 ? 'W' : 'L'} ${Math.abs(streak)}`
             : '—',
@@ -616,12 +670,15 @@ function mapTeamSchedule(events: EspnEvent[]): { recent: GameRow[]; upcoming: Ro
       return {
         GAME_ID: event.id,
         GAME_DATE: eventDate(event),
-        GAME_STATUS_TEXT: new Intl.DateTimeFormat('en-US', {
+        GAME_STATUS_TEXT: new Intl.DateTimeFormat('en-IL', {
           hour: 'numeric',
           minute: '2-digit',
-          timeZone: 'America/Los_Angeles',
-          timeZoneName: 'short',
+          hourCycle: 'h23',
+          timeZone: 'Asia/Jerusalem',
         }).format(new Date(eventDate(event))),
+        OPPONENT_LOGO: opponent.logo,
+        TIP_TIMESTAMP: eventDate(event),
+        IS_ISRAEL_FRIENDLY: isIsraelFriendly(eventDate(event)),
         HOME_TEAM_ID: home ? PORTLAND_ID : opponent.id,
         HOME_TEAM_NAME: home ? 'Portland Trail Blazers' : opponent.name,
         VISITOR_TEAM_ID: home ? opponent.id : PORTLAND_ID,
@@ -631,6 +688,20 @@ function mapTeamSchedule(events: EspnEvent[]): { recent: GameRow[]; upcoming: Ro
       }
     })
   return { recent: completed.reverse(), upcoming }
+}
+
+function isIsraelFriendly(timestamp: string): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-IL', {
+    timeZone: 'Asia/Jerusalem',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(timestamp)))
+  const minute = Number(new Intl.DateTimeFormat('en-IL', {
+    timeZone: 'Asia/Jerusalem',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(timestamp)))
+  return hour >= 19 || (hour === 0 && minute <= 30)
 }
 
 async function mapRoster(athletes: EspnAthlete[]): Promise<{ roster: Row[]; error: string }> {
@@ -650,6 +721,9 @@ async function mapRoster(athletes: EspnAthlete[]): Promise<{ roster: Row[]; erro
         REB: stats.REB,
         AST: stats.AST,
         MIN: stats.MIN,
+        FG_PCT: stats.FG_PCT,
+        STL: stats.STL,
+        BLK: stats.BLK,
       }
     } catch (reason) {
       if (!(reason instanceof EspnApiError && reason.status === 404)) errors.push(errorText(reason))
